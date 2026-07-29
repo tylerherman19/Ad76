@@ -1,0 +1,21 @@
+{
+  "name": "ad76-election-results",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Live ward-level results map for the Wisconsin Assembly District 76 Democratic primary (Dane County), August 11 2026.",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "fetch:wards": "node scripts/fetch-wards.mjs",
+    "verify:source": "node scripts/verify-source.mjs",
+    "verify:match": "node scripts/verify-match.mjs",
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "express": "^4.21.2",
+    "leaflet": "^1.9.4"
+  }
+}

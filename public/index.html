@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AD 76 Democratic Primary — Live Ward Results</title>
+<meta name="description" content="Live ward-level results for the Wisconsin Assembly District 76 Democratic primary, Dane County, August 11 2026.">
+<meta name="color-scheme" content="dark">
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead__inner">
+    <p class="eyebrow">Dane County, Wisconsin <span class="eyebrow__sep">/</span> <time datetime="2026-08-11">August 11, 2026</time></p>
+    <h1 class="masthead__title">Assembly District&nbsp;76<span class="masthead__title-sub">Democratic Primary</span></h1>
+    <p class="masthead__note" id="race-note">Ward-level results, updated live from the Dane County Clerk.</p>
+  </div>
+</header>
+
+<!-- Status strip: shared schedule, freshness, force refresh -->
+<section class="statusbar" aria-label="Results status">
+  <div class="statusbar__inner">
+
+    <div class="stat stat--reporting">
+      <span class="stat__label">Wards reporting</span>
+      <span class="stat__value" id="reporting-value">—</span>
+      <div class="reporting-track" role="img" aria-label="Share of wards reporting">
+        <div class="reporting-fill" id="reporting-fill"></div>
+      </div>
+    </div>
+
+    <div class="stat">
+      <span class="stat__label">Next refresh</span>
+      <span class="stat__value stat__value--num" id="countdown">—</span>
+      <span class="stat__sub" id="countdown-sub">schedule set by the server</span>
+    </div>
+
+    <div class="stat">
+      <span class="stat__label">Backend last fetched</span>
+      <span class="stat__value stat__value--sm" id="last-fetch">—</span>
+      <span class="stat__sub">our successful read of the county site</span>
+    </div>
+
+    <div class="stat">
+      <span class="stat__label">County “results last updated”</span>
+      <span class="stat__value stat__value--sm" id="county-updated">—</span>
+      <span class="stat__sub">timestamp the county itself reports</span>
+    </div>
+
+    <div class="statusbar__actions">
+      <div class="badge badge--hidden" id="stale-badge" role="status"></div>
+      <button class="refresh-btn" id="refresh-btn" type="button">
+        <span class="refresh-btn__label">Force refresh</span>
+        <span class="refresh-btn__hint" id="refresh-hint">refreshes for everyone</span>
+      </button>
+    </div>
+
+  </div>
+</section>
+
+<!-- District-wide summary -->
+<section class="summary" aria-labelledby="summary-heading">
+  <div class="summary__inner">
+    <h2 class="section-heading" id="summary-heading">District total</h2>
+    <div class="summary__lead" id="summary-lead">
+      <p class="summary__pending">No wards have reported yet.</p>
+    </div>
+    <ol class="summary__bars" id="summary-bars"></ol>
+  </div>
+</section>
+
+<!-- The map is the anchor of the page -->
+<section class="mapsection" aria-labelledby="map-heading">
+  <div class="mapsection__inner">
+    <div class="mapsection__head">
+      <h2 class="section-heading" id="map-heading">Leading candidate by ward</h2>
+      <p class="mapsection__hint" id="map-hint">Hover a ward for its full breakdown.</p>
+    </div>
+
+    <div class="mapwrap">
+      <div id="map" role="application" aria-label="Map of Assembly District 76 wards, shaded by leading candidate"></div>
+      <div class="mapdetail" id="mapdetail" aria-live="polite">
+        <p class="mapdetail__empty">Select a ward to see its five-candidate breakdown.</p>
+      </div>
+    </div>
+
+    <div class="legend" id="legend" aria-label="Candidate colours">
+      <div class="legend__candidates" id="legend-candidates"></div>
+      <div class="legend__scale">
+        <span class="legend__scale-label">Margin</span>
+        <div class="legend__ramp" id="legend-ramp"></div>
+        <div class="legend__ramp-labels"><span id="ramp-min">≤10 pts</span><span id="ramp-max">≥50 pts</span></div>
+        <div class="legend__nodata"><span class="legend__swatch legend__swatch--nodata"></span> Not yet reporting</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Results table -->
+<section class="tablesection" aria-labelledby="table-heading">
+  <div class="tablesection__inner">
+    <div class="tablesection__head">
+      <h2 class="section-heading" id="table-heading">Results by ward</h2>
+      <div class="tablesection__controls">
+        <button class="linkbtn" id="expand-all" type="button">Expand all</button>
+        <span class="tablesection__sep">·</span>
+        <button class="linkbtn" id="collapse-all" type="button">Collapse all</button>
+      </div>
+    </div>
+    <p class="tablesection__note" id="grouping-note"></p>
+    <div class="tablewrap" id="tablewrap"></div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="footer__inner">
+    <p id="footer-source">Source: Dane County Clerk election results.</p>
+    <p class="footer__meta">
+      Ward boundaries: Dane County GIS, Ward Boundaries layer, filtered to Assembly District 76.
+      <span id="footer-match"></span>
+    </p>
+    <p class="footer__meta">Pipeline status: <a href="/api/health">/api/health</a> · <a href="/api/logs">/api/logs</a></p>
+  </div>
+</footer>
+
+<script src="/vendor/leaflet/leaflet.js"></script>
+<script type="module" src="/app.js"></script>
+</body>
+</html>
