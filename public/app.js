@@ -45,9 +45,14 @@ const els = {
   footerSource: document.getElementById('footer-source'),
   footerMatch: document.getElementById('footer-match'),
   footerDiagnostics: document.getElementById('footer-diagnostics'),
+  scoreboardGrid: document.getElementById('scoreboard-grid'),
+  scoreboardNote: document.getElementById('scoreboard-note'),
+  viewWard: document.getElementById('view-ward'),
+  viewDistrict: document.getElementById('view-district'),
 };
 
-const NO_DATA_COLOR = '#3a3a3a';
+const NO_DATA_COLOR = '#d6d6d6';
+const BLEND_TARGET = '#FFFFFF';
 const isTouch = !window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 const isNarrow = () => window.matchMedia('(max-width: 900px)').matches;
 
@@ -56,6 +61,12 @@ const state = {
   schedule: null,
   display: { noDataColor: NO_DATA_COLOR, margin: {} },
   selectedUnitId: null,
+  selectedGroupKey: null,
+  // 'ward'     -> every ward coloured by its own leader
+  // 'district' -> wards coloured by their alder district's / municipality's
+  //               leader, with ward borders suppressed so districts read as
+  //               single shapes. Answers "are we winning district 12".
+  view: 'ward',
   openGroups: null,   // Set of group keys, initialised from viewport width
   openCards: new Set(),
   layersByWardKey: new Map(),
@@ -85,13 +96,27 @@ function fmtAgo(iso) {
   return `${Math.floor(mins / 60)}h ${mins % 60}m ago`;
 }
 
-/** Blend a hex colour toward the page background so margin reads as strength. */
+/**
+ * Blend a candidate colour toward the page background so margin of victory
+ * reads as colour intensity within a single hue. On the light theme the blend
+ * target is white, so a narrow win is a pale tint of the winner's colour.
+ */
 function tint(hex, strength) {
   const s = Math.max(0, Math.min(1, strength ?? 1));
-  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
-  const bg = [14, 15, 17];
-  const mix = (c, bgc) => Math.round(bgc + (c - bgc) * s);
+  const parse = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const [r, g, b] = parse(hex);
+  const bg = parse(state.display?.margin?.blendTarget ?? BLEND_TARGET);
+  const mix = (c, t) => Math.round(t + (c - t) * s);
   return `rgb(${mix(r, bg[0])}, ${mix(g, bg[1])}, ${mix(b, bg[2])})`;
+}
+
+/** The group (alder district or municipality) a reporting unit belongs to. */
+function groupForUnitId(unitId) {
+  return state.payload?.groups.find((g) => g.unitIds.includes(unitId)) ?? null;
+}
+function groupForWardKey(wardKey) {
+  const fill = state.payload?.wardFill?.[wardKey];
+  return fill?.unitId ? groupForUnitId(fill.unitId) : null;
 }
 
 const escapeHtml = (s) =>
@@ -112,25 +137,38 @@ let wardLayer = null;
 
 function baseStyle(wardKey) {
   const fill = state.payload?.wardFill?.[wardKey];
-  const selected = fill?.unitId && fill.unitId === state.selectedUnitId;
+  const noData = state.display.noDataColor || NO_DATA_COLOR;
 
-  let fillColor = state.display.noDataColor || NO_DATA_COLOR;
-  let fillOpacity = 0.85;
-
-  if (fill?.reported && fill.color) {
-    fillColor = tint(fill.color, fill.strength ?? 1);
-    fillOpacity = 0.95;
-  } else if (fill?.reported && fill.tied) {
-    fillColor = '#5a6068'; // reported but tied: no single leader to colour by
-    fillOpacity = 0.9;
+  if (state.view === 'district') {
+    // Colour by the ward's alder district (or municipality) rather than by the
+    // ward itself, and paint the ward border in the fill colour so internal
+    // boundaries disappear and each district reads as one shape.
+    const group = groupForWardKey(wardKey);
+    const selected = group && group.key === state.selectedGroupKey;
+    const lead = group?.leader;
+    let color = noData;
+    if (lead && !lead.tied) color = tint(lead.color, lead.strength ?? 1);
+    else if (lead?.tied) color = '#b9bec4';
+    return {
+      color: selected ? '#1a1a1a' : color,
+      weight: selected ? 2.5 : 1,
+      opacity: 1,
+      fillColor: color,
+      fillOpacity: 1,
+    };
   }
 
+  const selected = fill?.unitId && fill.unitId === state.selectedUnitId;
+  let fillColor = noData;
+  if (fill?.reported && fill.color) fillColor = tint(fill.color, fill.strength ?? 1);
+  else if (fill?.reported && fill.tied) fillColor = '#b9bec4';
+
   return {
-    color: selected ? '#ecebe8' : '#0e0f11',
-    weight: selected ? 2.5 : 1,
+    color: selected ? '#1a1a1a' : '#ffffff',
+    weight: selected ? 2.5 : 0.8,
     opacity: 1,
     fillColor,
-    fillOpacity,
+    fillOpacity: 1,
   };
 }
 
@@ -218,12 +256,34 @@ async function initMap() {
  * disagree about which ward is active.
  */
 function selectWardKey(wardKey, { scrollTable = false } = {}) {
+  if (state.view === 'district') {
+    const group = groupForWardKey(wardKey);
+    return selectGroup(group?.key ?? null, { scrollTable });
+  }
   const unit = unitForWardKey(wardKey);
   selectUnit(unit?.id ?? null, { scrollTable });
 }
 
+/** Select a whole alder district / municipality (district view). */
+function selectGroup(groupKey, { scrollTable = false } = {}) {
+  state.selectedGroupKey = groupKey;
+  state.selectedUnitId = null;
+  restyleAll();
+  renderDetail();
+  renderScoreboard();
+  for (const el of document.querySelectorAll('[data-group-key]')) {
+    el.classList.toggle('is-linked', el.dataset.groupKey === groupKey);
+  }
+  for (const el of document.querySelectorAll('[data-unit-id]')) el.classList.remove('is-linked');
+  if (scrollTable && groupKey) {
+    document.querySelector(`[data-group-key="${CSS.escape(groupKey)}"][data-row]`)
+      ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+}
+
 function selectUnit(unitId, { scrollTable = false, panMap = false } = {}) {
   state.selectedUnitId = unitId;
+  state.selectedGroupKey = null;
   restyleAll();
   renderDetail();
   syncTableHighlight(scrollTable);
@@ -258,6 +318,7 @@ function syncTableHighlight(scrollIntoView) {
 }
 
 function renderDetail() {
+  if (state.view === 'district') return renderGroupDetail();
   const unit = state.selectedUnitId ? unitById(state.selectedUnitId) : null;
   if (!unit) {
     els.mapDetail.innerHTML = `<p class="mapdetail__empty">${
@@ -306,6 +367,91 @@ function renderDetail() {
     body;
 }
 
+/** Detail panel contents when the map is in alder-district view. */
+function renderGroupDetail() {
+  const group = state.selectedGroupKey
+    ? state.payload?.groups.find((g) => g.key === state.selectedGroupKey)
+    : null;
+
+  if (!group) {
+    els.mapDetail.innerHTML = `<p class="mapdetail__empty">${
+      isTouch ? 'Tap' : 'Select'
+    } an alder district to see its combined five-candidate totals.</p>`;
+    return;
+  }
+
+  const colorOf = new Map((state.payload?.candidates ?? []).map((c) => [c.name, c.color]));
+  let body;
+  if (group.totalVotes === null) {
+    body = '<p class="mapdetail__status">No wards in this district have reported.</p>';
+  } else {
+    const rows = [...group.candidates].sort((a, b) => (b.votes ?? -1) - (a.votes ?? -1));
+    const leadName = group.leader?.tied ? null : group.leader?.name;
+    body =
+      '<ul class="mapdetail__rows">' +
+      rows
+        .map(
+          (r) => `<li class="mapdetail__row ${r.name === leadName ? 'mapdetail__row--lead' : ''}">
+            <span class="chip" style="background:${colorOf.get(r.name) ?? NO_DATA_COLOR}"></span>
+            <span class="mapdetail__row-name">${escapeHtml(r.name)}</span>
+            <span class="mapdetail__row-num"><b>${fmtInt(r.votes)}</b> · ${fmtPct(r.percent)}</span>
+          </li>`,
+        )
+        .join('') +
+      '</ul>' +
+      `<p class="mapdetail__total">${fmtInt(group.totalVotes)} votes · ${group.reportedUnits} of ${group.totalUnits} wards reporting${
+        group.leader && !group.leader.tied ? ` · lead ${(group.leader.margin * 100).toFixed(1)} pts` : group.leader?.tied ? ' · tied' : ''
+      }</p>`;
+  }
+
+  els.mapDetail.innerHTML =
+    `<p class="mapdetail__ward">${escapeHtml(group.label)}</p>` +
+    `<p class="mapdetail__meta">${group.kind === 'alder' ? 'City of Madison' : 'Outside Madison'} · ${group.totalUnits} ward${group.totalUnits === 1 ? '' : 's'}</p>` +
+    body;
+}
+
+/**
+ * Alder district scoreboard — one card per district showing who leads it.
+ * This is the "are we winning district 12" view: it reads as a scoreboard
+ * rather than something you have to add up from the ward table.
+ */
+function renderScoreboard() {
+  const p = state.payload;
+  if (!p) return;
+
+  const decided = p.groups.filter((g) => g.leader && !g.leader.tied);
+  const wins = new Map();
+  for (const g of decided) wins.set(g.leader.name, (wins.get(g.leader.name) ?? 0) + 1);
+  const tally = [...wins.entries()].sort((a, b) => b[1] - a[1]);
+
+  els.scoreboardNote.textContent = decided.length
+    ? `Leading in ${decided.length} of ${p.groups.length} districts — ` +
+      tally.map(([n, c]) => `${n} ${c}`).join(' · ')
+    : 'No district has reported yet.';
+
+  const colorOf = new Map(p.candidates.map((c) => [c.name, c.color]));
+
+  els.scoreboardGrid.innerHTML = p.groups
+    .map((g) => {
+      const lead = g.leader;
+      const accent = lead && !lead.tied ? lead.color : 'transparent';
+      const body = !lead
+        ? '<span class="scorecard__pending">Not yet reporting</span>'
+        : lead.tied
+          ? '<span class="scorecard__pending">Tied</span>'
+          : `<span class="scorecard__leader"><span class="chip" style="background:${colorOf.get(lead.name) ?? NO_DATA_COLOR}"></span><span>${escapeHtml(lead.name)}</span></span>
+             <span class="scorecard__margin">${fmtPct(lead.percent, 1)} · +${(lead.margin * 100).toFixed(1)} pts</span>`;
+
+      return `<button class="scorecard ${g.key === state.selectedGroupKey ? 'is-linked' : ''}" type="button"
+                data-group-key="${escapeHtml(g.key)}" style="border-left-color:${accent}">
+          <span class="scorecard__name">${escapeHtml(g.label)}</span>
+          <span class="scorecard__kind">${g.kind === 'alder' ? 'City of Madison' : 'Outside Madison'} · ${g.reportedUnits}/${g.totalUnits} wards</span>
+          ${body}
+        </button>`;
+    })
+    .join('');
+}
+
 /* --------------------------------------------------------------- status */
 
 function renderStatus() {
@@ -319,6 +465,13 @@ function renderStatus() {
   els.reportingFill.style.width = `${pctReporting}%`;
 
   els.lastFetch.textContent = s.lastSuccessAt ? `${fmtClock(s.lastSuccessAt)} (${fmtAgo(s.lastSuccessAt)})` : 'not yet';
+
+  // There is no backend in the static build, so do not call it one.
+  const staticMode = s.sharedStateAvailable === false;
+  document.querySelector('#last-fetch').previousElementSibling.textContent =
+    staticMode ? 'This page last fetched' : 'Backend last fetched';
+  document.querySelector('#last-fetch').nextElementSibling.textContent =
+    staticMode ? 'this browser\u2019s read of the county API' : 'our successful read of the county site';
   els.countyUpdated.textContent = p.source.countyUpdatedAt
     ? fmtClock(p.source.countyUpdatedAt)
     : p.awaitingResults
@@ -581,14 +734,83 @@ function renderGroupMobile(group, candidates) {
   return `<div class="wardcard"><ul class="cardlist">${cards}</ul>${sub}</div>`;
 }
 
+/** Table body when in alder-district view: one row per district, no nesting. */
+function renderDistrictTable() {
+  const p = state.payload;
+  const candidates = p.candidates;
+  const colorOf = new Map(candidates.map((c) => [c.name, c.color]));
+
+  const rows = p.groups
+    .map((g) => {
+      const cells = g.totalVotes === null
+        ? `<td class="notreporting" colspan="${candidates.length * 2}">No wards reporting</td>`
+        : voteCells(g.candidates, candidates);
+      return `<tr class="wardrow ${g.totalVotes === null ? 'is-unreported' : ''}"
+                  data-group-key="${escapeHtml(g.key)}" data-row="1" tabindex="0">
+          <td class="ward-name">${escapeHtml(g.label)}</td>
+          ${cells}
+          <td class="num">${g.totalVotes === null ? '—' : fmtInt(g.totalVotes)}</td>
+        </tr>`;
+    })
+    .join('');
+
+  const desktop = `<table class="results">
+      <thead><tr><th scope="col">Alder district</th>${candidateHeaderCells(candidates)}<th scope="col">Total</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+
+  const cards = p.groups
+    .map((g) => {
+      const lead = g.leader;
+      const head = `<span class="chip" style="background:${lead && !lead.tied ? lead.color : NO_DATA_COLOR}"></span>
+        <span><span class="cardrow__ward">${escapeHtml(g.label)}</span><br><span class="cardrow__lead">${
+          !lead ? 'Not yet reporting' : lead.tied ? 'Tied' : `${escapeHtml(lead.name)} · ${fmtPct(lead.percent, 0)}`
+        }</span></span>
+        <span class="cardrow__total">${g.totalVotes === null ? '—' : fmtInt(g.totalVotes)}</span>`;
+      const detail = g.totalVotes === null
+        ? '<p class="cardrow__lead">No wards in this district have reported.</p>'
+        : `<ul class="cardrow__list">${[...g.candidates]
+            .sort((a, b) => (b.votes ?? -1) - (a.votes ?? -1))
+            .map((r) => `<li class="cardrow__item">
+                <span class="chip" style="background:${colorOf.get(r.name) ?? NO_DATA_COLOR}"></span>
+                <span>${escapeHtml(r.name)}</span>
+                <span class="cardrow__item-num">${fmtInt(r.votes)} · ${fmtPct(r.percent)}</span>
+              </li>`).join('')}</ul>`;
+      const open = state.openCards.has(g.key);
+      return `<li class="cardrow" data-group-key="${escapeHtml(g.key)}" data-row="1" data-open="${open}">
+          <button class="cardrow__head" type="button" data-card-toggle="${escapeHtml(g.key)}" aria-expanded="${open}">${head}</button>
+          <div class="cardrow__detail">${detail}</div>
+        </li>`;
+    })
+    .join('');
+
+  return desktop + `<div class="wardcard"><ul class="cardlist">${cards}</ul></div>`;
+}
+
 function renderTable() {
   const p = state.payload;
   if (!p) return;
   const candidates = p.candidates;
 
+  document.getElementById('table-heading').textContent =
+    state.view === 'district' ? 'Results by alder district' : 'Results by ward';
+  document.getElementById('map-heading').textContent =
+    state.view === 'district' ? 'Leading candidate by alder district' : 'Leading candidate by ward';
+
   // Collapsed by default on mobile, expanded by default on desktop.
   if (state.openGroups === null) {
     state.openGroups = new Set(isNarrow() ? [] : p.groups.map((g) => g.key));
+  }
+
+  if (state.view === 'district') {
+    els.groupingNote.textContent =
+      'One row per alder district (City of Madison) or municipality (outside Madison), ' +
+      'summing every ward in it. Switch to Ward view for individual wards.';
+    els.tableWrap.innerHTML = renderDistrictTable() + renderGrandTotal(p, candidates);
+    for (const el of document.querySelectorAll('[data-group-key]')) {
+      el.classList.toggle('is-linked', el.dataset.groupKey === state.selectedGroupKey);
+    }
+    return;
   }
 
   els.groupingNote.textContent =
@@ -674,14 +896,26 @@ els.tableWrap.addEventListener('click', (e) => {
     const id = cardBtn.dataset.cardToggle;
     if (state.openCards.has(id)) state.openCards.delete(id);
     else state.openCards.add(id);
-    // Tapping a ward row also highlights it on the map.
-    selectUnit(id, { panMap: true });
+    // Tapping a row also highlights it on the map.
+    if (state.view === 'district') selectGroup(id);
+    else selectUnit(id, { panMap: true });
     renderTable();
     return;
   }
 
   const row = e.target.closest('tr.wardrow');
-  if (row) selectUnit(row.dataset.unitId, { panMap: true });
+  if (row) {
+    if (row.dataset.groupKey) selectGroup(row.dataset.groupKey);
+    else selectUnit(row.dataset.unitId, { panMap: true });
+  }
+});
+
+// Scoreboard cards select their district on the map and in the table.
+els.scoreboardGrid.addEventListener('click', (e) => {
+  const card = e.target.closest('[data-group-key]');
+  if (!card) return;
+  if (state.view !== 'district') setView('district');
+  selectGroup(card.dataset.groupKey, { scrollTable: true });
 });
 
 els.tableWrap.addEventListener('keydown', (e) => {
@@ -696,10 +930,37 @@ els.tableWrap.addEventListener('keydown', (e) => {
 els.tableWrap.addEventListener('mouseover', (e) => {
   if (isTouch) return;
   const row = e.target.closest('tr.wardrow');
-  if (row && row.dataset.unitId !== state.selectedUnitId) selectUnit(row.dataset.unitId);
+  if (!row) return;
+  if (row.dataset.groupKey) {
+    if (row.dataset.groupKey !== state.selectedGroupKey) selectGroup(row.dataset.groupKey);
+  } else if (row.dataset.unitId !== state.selectedUnitId) {
+    selectUnit(row.dataset.unitId);
+  }
 });
 
+/** Switch between ward-level and alder-district-level map + table. */
+function setView(view) {
+  if (state.view === view) return;
+  state.view = view;
+  state.selectedUnitId = null;
+  state.selectedGroupKey = null;
+  els.viewWard.setAttribute('aria-pressed', String(view === 'ward'));
+  els.viewDistrict.setAttribute('aria-pressed', String(view === 'district'));
+  els.mapHint.textContent =
+    view === 'district'
+      ? (isTouch ? 'Tap a district for its combined totals.' : 'Hover a district for its combined totals.')
+      : (isTouch ? 'Tap a ward for its full breakdown.' : 'Hover a ward for its full breakdown; click to jump to its row.');
+  restyleAll();
+  renderDetail();
+  renderTable();
+  renderScoreboard();
+}
+
+els.viewWard.addEventListener('click', () => setView('ward'));
+els.viewDistrict.addEventListener('click', () => setView('district'));
+
 els.expandAll.addEventListener('click', () => {
+  setView('ward');
   state.openGroups = new Set((state.payload?.groups ?? []).map((g) => g.key));
   renderTable();
 });
@@ -763,6 +1024,7 @@ async function loadResults() {
 
     renderLegend();
     renderSummary();
+    renderScoreboard();
     renderStatus();
     renderTable();
     restyleAll();

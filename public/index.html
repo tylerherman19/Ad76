@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>AD 76 Democratic Primary — Live Ward Results</title>
+<title>AD 76 Democratic Primary — Live Results</title>
 <meta name="description" content="Live ward-level results for the Wisconsin Assembly District 76 Democratic primary, Dane County, August 11 2026.">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="light">
 <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="/styles.css">
 </head>
@@ -71,11 +71,26 @@
   </div>
 </section>
 
+<!-- Alder district scoreboard: answers "who is winning district 12" at a glance -->
+<section class="scoreboard" aria-labelledby="scoreboard-heading">
+  <div class="summary__inner">
+    <div class="scoreboard__head">
+      <h2 class="section-heading" id="scoreboard-heading">Who leads each alder district</h2>
+      <p class="scoreboard__note" id="scoreboard-note"></p>
+    </div>
+    <div class="scoreboard__grid" id="scoreboard-grid"></div>
+  </div>
+</section>
+
 <!-- The map is the anchor of the page -->
 <section class="mapsection" aria-labelledby="map-heading">
   <div class="mapsection__inner">
     <div class="mapsection__head">
       <h2 class="section-heading" id="map-heading">Leading candidate by ward</h2>
+      <div class="viewtoggle" role="group" aria-label="Map and table detail level">
+        <button class="viewtoggle__btn" id="view-ward" type="button" aria-pressed="true">Ward view</button>
+        <button class="viewtoggle__btn" id="view-district" type="button" aria-pressed="false">Alder district view</button>
+      </div>
       <p class="mapsection__hint" id="map-hint">Hover a ward for its full breakdown.</p>
     </div>
 

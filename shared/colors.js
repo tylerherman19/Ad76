@@ -90,6 +90,20 @@ export function assignCandidateColors(candidates, candidatesConfig) {
  * (0.42 = 42 points). Below lightestMargin renders at minOpacity, at or above
  * fullStrengthMargin renders at maxOpacity, linear in between.
  */
+/**
+ * Blend a candidate colour toward the page background by `strength`, so margin
+ * of victory reads as colour intensity within one hue. Shared by the map, the
+ * legend ramp and the district scoreboard.
+ */
+export function tintColor(hex, strength, blendTarget = '#FFFFFF') {
+  const s = Math.max(0, Math.min(1, strength ?? 1));
+  const parse = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const [r, g, b] = parse(hex);
+  const bg = parse(blendTarget);
+  const mix = (c, t) => Math.round(t + (c - t) * s);
+  return `rgb(${mix(r, bg[0])}, ${mix(g, bg[1])}, ${mix(b, bg[2])})`;
+}
+
 export function marginStrength(margin, marginConfig) {
   const { lightestMargin, fullStrengthMargin, minOpacity, maxOpacity } = marginConfig;
   if (!Number.isFinite(margin)) return minOpacity;

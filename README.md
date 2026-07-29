@@ -3,9 +3,10 @@
 Ward-level choropleth map and results table for the **Wisconsin Assembly District 76
 Democratic primary**, Dane County, **August 11, 2026**.
 
-Results come from the Dane County Clerk, each reporting unit is matched to a ward
-boundary from Dane County GIS, and a buildless dark-mode frontend renders the map,
-legend, summary bar and grouped results table.
+Results come from the Dane County Clerk's JSON API, each reporting unit is matched to a
+ward boundary from Dane County GIS, and a buildless light-theme frontend (modelled on
+FiveThirtyEight) renders the map, legend, summary bar, alder-district scoreboard and
+results table.
 
 It ships as **two deployments from one codebase** — a static GitHub Pages build and a
 Node server. All the parsing, ward matching, grouping, colour and margin logic lives in
@@ -140,6 +141,45 @@ WARN match.no_ward_found {"precinctName":"C Madison Wd 026","reason":"no ward in
 
 ---
 
+## Two views: ward and alder district
+
+The race is a state assembly primary, but the useful political unit on the night is often
+the **alder district** — "are we winning District 12". Both levels are first-class:
+
+- **Ward view** (default) — every ward coloured by its own leader; the table lists wards
+  grouped under their alder district with subtotals.
+- **Alder district view** — wards are coloured by their *district's* leader and ward
+  borders are painted in the fill colour, so each district reads as one shape. The table
+  collapses to one row per district.
+
+Above the map, an always-visible **scoreboard** shows who leads each alder district, with
+the leader's share and margin, plus a running tally ("Leading in 7 of 8 districts —
+Martinez-Rutherford 3 · Castañeda 1 · …"). Clicking a card selects that district on the
+map and in the table.
+
+Wards outside Madison have no alder district, so Town of Blooming Grove and Village of
+Maple Bluff appear as their own cards and rows — see finding 2.
+
+## What the force refresh button does
+
+Results refresh on a schedule: every **60 seconds** while no ward has reported, dropping
+to every **15 seconds** as soon as any ward reports. Both intervals and the switch-over
+threshold are config values.
+
+Force refresh skips the wait — it fetches from the county immediately and restarts the
+countdown. What it affects depends on the deployment:
+
+| | Static (GitHub Pages) | Server (`npm start`) |
+| --- | --- | --- |
+| Who gets fresh data | only the browser that clicked | every viewer |
+| Countdown reset | only that browser | everyone's, from a shared timestamp |
+| Repeat clicks | ignored for 12s per browser | ignored for 12s **globally**, so a crowd clicking at once produces one request to the county |
+
+The button label says which one is in effect ("refreshes this browser" vs "refreshes for
+everyone"). On the static build it is a convenience — the timer already does the work.
+
+---
+
 ## Two deployments
 
 `shared/` holds every piece of logic that decides what a number means: the precinct-label
@@ -153,7 +193,7 @@ What differs is where the county fetch happens and whether shared state exists.
 | Hosting | GitHub Pages, free, no infra | any container/VM host |
 | County fetch | each browser calls the JSON API directly | backend fetches once per interval |
 | Load on the county | one request **per viewer** per interval | **one request total** per interval |
-| Map, table, grouping, colours, margins | identical | identical |
+| Map, table, scoreboard, grouping, colours, margins | identical | identical |
 | Never-fabricate / not-reporting states | identical | identical |
 | Same countdown for every visitor | ✅ derived from the wall clock | ✅ real shared server state |
 | Force refresh resets everyone's countdown | ❌ refreshes only the clicking browser | ✅ |
@@ -271,10 +311,13 @@ summary bar all read the same assignment.
 - Remaining candidates take, in scrape order: Orange `#E69F00`, Bluish Green `#009E73`,
   Reddish Purple `#CC79A7`, Vermillion `#D55E00`.
 - Palette is Okabe-Ito derived: safe under deuteranopia, protanopia and tritanopia. No
-  yellow (unreadable on the dark background); no red/green pair carries meaning.
+  yellow (too low-contrast against a white page); no red/green pair carries meaning.
 - Write-in lines count toward totals but take a neutral grey, not a hue.
-- Wards with no reported data are `#3A3A3A`, distinct from the `#0E0F11` page
-  background so ward boundaries stay visible.
+- Wards with no reported data are `#D6D6D6`, distinct from the white page background so
+  ward boundaries stay visible.
+- The theme is light throughout (no dark mode), styled after FiveThirtyEight: white page,
+  hairline grey rules instead of boxes, small uppercase letterspaced mono labels, heavy
+  tight-tracked headline sans, and tabular figures so updating numbers never jitter.
 
 If the candidate field changes, edit the config list — that is the whole change.
 
@@ -283,9 +326,12 @@ If the candidate field changes, edit the config list — that is the whole chang
 Margin of victory is encoded within the leader's own hue by blending toward the page
 background — one shared scale function, `marginStrength()`, used for every candidate:
 
-- margin ≤ `margin.lightestMargin` (10 pts) → lightest tint (`minOpacity` 0.28)
+- margin ≤ `margin.lightestMargin` (10 pts) → lightest tint (`minOpacity` 0.18)
 - margin ≥ `margin.fullStrengthMargin` (50 pts) → full strength
 - linear in between
+
+The tint blends toward `margin.blendTarget` (white, matching the page), so a narrow win is
+a pale wash of the winner's colour and a landslide is the colour at full strength.
 
 ---
 

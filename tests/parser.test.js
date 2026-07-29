@@ -193,7 +193,12 @@ test('remaining candidates take the palette in scrape order, write-ins get neutr
   ], CANDS);
   assert.deepEqual(
     assigned.map((c) => c.color),
-    ['#E69F00', '#009E73', '#CC79A7', '#56B4E9', '#D55E00', '#6B6B6B'],
+    [
+      ...CANDS.paletteOrder.slice(0, 3).map((p) => p.color), // first three non-locked, in order
+      CANDS.lockedColors[0].color,                            // Martinez-Rutherford, locked
+      CANDS.paletteOrder[3].color,                            // fourth non-locked
+      CANDS.writeInColor,                                     // write-in stays neutral
+    ],
   );
   assert.equal(assigned.at(-1).writeIn, true);
 });

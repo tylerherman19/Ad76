@@ -174,8 +174,22 @@ export function buildPayload(raw, wardIndex, config, warn = () => {}) {
       }
       const { total, rows } = summarize(tally, candidates);
       const anyReported = reportedMembers.length > 0;
+      // Group-level leader, so the UI can answer "who is winning alder
+      // district 12" without recomputing totals in the browser.
+      const gLeader = anyReported ? leaderOf(rows, candidates) : null;
       return {
         ...g,
+        leader: gLeader
+          ? {
+              name: gLeader.name,
+              tied: gLeader.tied,
+              margin: gLeader.margin,
+              percent: gLeader.percent,
+              votes: gLeader.votes,
+              color: gLeader.tied ? null : colorOf.get(gLeader.name) ?? null,
+              strength: marginStrength(gLeader.margin, config.margin),
+            }
+          : null,
         unitIds: g.unitIds.sort((a, b) =>
           (unitById.get(a).label ?? '').localeCompare(unitById.get(b).label ?? '', undefined, { numeric: true }),
         ),
@@ -303,6 +317,7 @@ export function buildPlaceholderPayload(wardIndex, config, reason) {
         unitIds: [],
         reportedUnits: 0,
         totalVotes: null,
+        leader: null,
         candidates: candidates.map((c) => ({ name: c.name, votes: null, percent: null })),
       });
     }

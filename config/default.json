@@ -59,17 +59,18 @@
       { "color": "#CC79A7", "label": "Reddish Purple" },
       { "color": "#D55E00", "label": "Vermillion" }
     ],
-    "noDataColor": "#3A3A3A",
+    "noDataColor": "#D6D6D6",
     "//writeIn": "Write-in lines are real results and are counted in totals, but are not given a palette colour or a map hue.",
     "writeInPattern": "^write-?in",
-    "writeInColor": "#6B6B6B"
+    "writeInColor": "#9A9A9A"
   },
 
   "margin": {
-    "//": "Shared saturation scale used for every candidate. A ward won by >= fullStrengthMargin renders at full opacity; a ward won by <= lightestMargin renders at minOpacity.",
+    "//": "Shared saturation scale used for every candidate. A ward won by >= fullStrengthMargin renders at full strength; a ward won by <= lightestMargin renders at the lightest tint. blendTarget is the colour a light margin fades toward — white, to match the light page background.",
+    "blendTarget": "#FFFFFF",
     "lightestMargin": 0.10,
     "fullStrengthMargin": 0.50,
-    "minOpacity": 0.28,
+    "minOpacity": 0.18,
     "maxOpacity": 1.0
   },
 
