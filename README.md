@@ -424,11 +424,22 @@ explanation if Cloudflare blocks it.
 
 `.github/workflows/pages.yml` builds `dist/` and deploys on every push to `main`.
 
-**One-time manual step:** enable Pages at **Settings → Pages → Source: GitHub Actions**.
-This genuinely cannot be automated from the workflow — a workflow's default
+**One-time manual step:** at **Settings → Pages**, set **Source** to **“GitHub Actions”**.
+
+> ⚠️ Do **not** pick “Deploy from a branch → main”. That publishes the *repository* through
+> Jekyll, and since there is no `index.html` at the repo root (the app lives in `public/`
+> and is built into `dist/`, which is not committed), Jekyll renders `README.md` as the
+> site. The symptom is a page titled “AD 76 — Live Ward Results Map | Ad76” with
+> `<meta name="generator" content="Jekyll">`, and `app.js` / `styles.css` /
+> `runtime-config.json` all returning 404. Branch mode also spawns a competing
+> “pages build and deployment” run that overrides this workflow's deployment.
+> “GitHub Actions” is the only correct source; there is no branch or folder to choose
+> after selecting it.
+
+Enabling Pages cannot be automated from the workflow — a workflow's default
 `GITHUB_TOKEN` is not allowed to create a Pages site (`configure-pages` fails with
 "Resource not accessible by integration"), and doing it via the API needs a PAT with
-`repo` scope. Once the toggle is set, every push to `main` deploys with no further
+`repo` scope. Once the source is set, every push to `main` deploys with no further
 intervention.
 
 To point it at the real primary, either set `election.electionId` in
