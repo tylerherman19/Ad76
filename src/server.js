@@ -14,6 +14,10 @@ app.use(express.static(path.join(ROOT, 'public'), { maxAge: '5m', index: 'index.
 // Leaflet is served from node_modules rather than a CDN so the page has no
 // third-party runtime dependency.
 app.use('/vendor/leaflet', express.static(path.join(ROOT, 'node_modules', 'leaflet', 'dist'), { maxAge: '1d' }));
+// The browser imports the same shared/ modules the backend uses, so the static
+// GitHub Pages build and this server run identical parsing, matching and
+// colouring code.
+app.use('/shared', express.static(path.join(ROOT, 'shared'), { maxAge: '5m' }));
 
 // ------------------------------------------------------------------- api ---
 

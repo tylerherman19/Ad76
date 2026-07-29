@@ -3,10 +3,13 @@
 Ward-level choropleth map and results table for the **Wisconsin Assembly District 76
 Democratic primary**, Dane County, **August 11, 2026**.
 
-A small Node backend scrapes the Dane County Clerk's results on a schedule it owns,
-matches each reporting unit to a ward boundary from Dane County GIS, and serves a
-cached JSON payload. A buildless dark-mode frontend polls that payload and renders
-the map, legend, summary bar and grouped results table.
+Results come from the Dane County Clerk, each reporting unit is matched to a ward
+boundary from Dane County GIS, and a buildless dark-mode frontend renders the map,
+legend, summary bar and grouped results table.
+
+It ships as **two deployments from one codebase** — a static GitHub Pages build and a
+Node server. All the parsing, ward matching, grouping, colour and margin logic lives in
+`shared/` and runs identically in both. See [Two deployments](#two-deployments).
 
 ---
 
@@ -137,6 +140,58 @@ WARN match.no_ward_found {"precinctName":"C Madison Wd 026","reason":"no ward in
 
 ---
 
+## Two deployments
+
+`shared/` holds every piece of logic that decides what a number means: the precinct-label
+grammar, ward matching, grouping, totals, candidate colours and the margin scale. Both
+deployments import those same modules, so they cannot disagree about results.
+
+What differs is where the county fetch happens and whether shared state exists.
+
+| | **Static — GitHub Pages** | **Server — `npm start`** |
+| --- | --- | --- |
+| Hosting | GitHub Pages, free, no infra | any container/VM host |
+| County fetch | each browser calls the JSON API directly | backend fetches once per interval |
+| Load on the county | one request **per viewer** per interval | **one request total** per interval |
+| Map, table, grouping, colours, margins | identical | identical |
+| Never-fabricate / not-reporting states | identical | identical |
+| Same countdown for every visitor | ✅ derived from the wall clock | ✅ real shared server state |
+| Force refresh resets everyone's countdown | ❌ refreshes only the clicking browser | ✅ |
+| Debounce protecting the county from a click burst | ❌ per-browser only | ✅ cross-visitor |
+| `/api/health`, `/api/logs` | ❌ replaced by inline diagnostics in the footer | ✅ |
+| HTML scraper fallback | ❌ (no CORS, and 403 to datacenter IPs) | ✅ via `SOURCE_MODE` |
+
+### How the countdown stays shared without a server
+
+The static build does not start a timer when the page loads. It anchors refreshes to
+absolute UTC boundaries of the current interval:
+
+```js
+nextRefresh = Math.floor(now / intervalMs) * intervalMs + intervalMs
+```
+
+Two browsers opened forty seconds apart therefore compute the *same* next-refresh
+instant, which reproduces the "everyone sees the same countdown" property without shared
+state. Verified in a browser: two tabs opened seconds apart showed the same countdown.
+
+What genuinely cannot be reproduced is a force refresh that resets *other people's*
+countdowns, and a debounce that protects the county across visitors — both require shared
+state by definition. The static build does not pretend otherwise: the button reads
+"refreshes this browser", and the footer says each visitor reads the county directly.
+
+**If cross-visitor force refresh or single-upstream-request behaviour matters to you, run
+the Node server** (`fly.toml` and `render.yaml` are included). Nothing needs rewriting —
+it is the same repo.
+
+### Why the browser can call the county at all
+
+`api.danecounty.gov` responds with `Access-Control-Allow-Origin: *` (verified), so browser
+JS may call it cross-origin. This is worth stating precisely, because it is *not* true of
+the HTML results site, which sends no CORS headers **and** 403s datacenter IPs. The
+scraper is therefore server-only, and the static build is API-only.
+
+---
+
 ## Stack, and why
 
 | Layer    | Choice | Reason |
@@ -154,7 +209,11 @@ WARN match.no_ward_found {"precinctName":"C Madison Wd 026","reason":"no ward in
 ```bash
 npm install
 npm run fetch:wards      # pulls AD76 ward boundaries into data/ad76-wards.geojson
-npm start                # http://localhost:8080
+
+npm start                # server deployment  -> http://localhost:8080
+# or
+npm run build:static     # static deployment  -> dist/
+npx http-server dist -p 4000
 ```
 
 `npm run fetch:wards` only needs re-running if ward boundaries change.
@@ -315,6 +374,22 @@ explanation if Cloudflare blocks it.
 
 ## Deployment
 
+### GitHub Pages (static)
+
+`.github/workflows/pages.yml` builds `dist/` and deploys on every push to `main`.
+Enable Pages once: **Settings → Pages → Source: GitHub Actions**.
+
+To point it at the real primary, either set `election.electionId` in
+`config/default.json` and push, or add an `ELECTION_ID` repository variable
+(**Settings → Secrets and variables → Actions → Variables**) and re-run the workflow —
+no code change needed. The workflow also accepts an election id via
+**Actions → Deploy to GitHub Pages → Run workflow**.
+
+Read [Two deployments](#two-deployments) first: the static build cannot do a
+cross-visitor force refresh, and every viewer polls the county directly.
+
+### Server (full fidelity)
+
 Any host that runs a container or a long-lived Node process.
 
 ```bash
@@ -379,10 +454,9 @@ Do these **before** election night, not during it:
 config/default.json       all tunable values, documented inline
 src/config.js             config load + env overrides
 src/logger.js             logging with an in-memory tail for /api/logs
-src/precinctName.js       county precinct label -> municipality + ward numbers
-src/match.js              explicit ward matching; reports every gap
-src/colors.js             candidate colours + shared margin scale (single source of truth)
-src/normalize.js          raw fetch -> frontend payload; never-fabricate rules live here
+src/match.js              Node wrapper binding shared/match.js to the logger
+src/colors.js             Node wrapper binding shared/colors.js to config
+src/normalize.js          Node wrapper binding shared/normalize.js to config + wards
 src/scheduler.js          shared countdown, backoff, force-refresh debounce
 src/server.js             Express routes
 src/sources/html.js       elections.danecounty.gov scraper (selectable)
@@ -391,8 +465,19 @@ src/geo/wards.js          ward GeoJSON loading and indexing
 scripts/fetch-wards.mjs   pull ward boundaries from Dane County GIS
 scripts/verify-match.mjs  ward-matching verification
 scripts/verify-source.mjs live HTML fetch + parse report
+scripts/build-static.mjs  builds dist/ for GitHub Pages
+shared/                   logic used by BOTH deployments (pure ESM, no Node built-ins)
+  precinctName.js           county precinct label -> municipality + ward numbers
+  wardIndex.js              ward GeoJSON -> indexed wards
+  match.js                  explicit ward matching; reports every gap
+  colors.js                 candidate colours + shared margin scale
+  normalize.js              raw fetch -> frontend payload; never-fabricate rules
+  countyApi.js              Dane County JSON client (runs in Node and the browser)
+  schedule.js               cadence + wall-clock countdown for the static build
 public/                   frontend (no build step)
+  pipeline.js               picks server-backed or browser-direct data path
 data/ad76-wards.geojson   committed ward boundaries
+.github/workflows/pages.yml  builds and deploys the static site
 ```
 
 ## Data sources

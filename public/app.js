@@ -14,6 +14,10 @@
    same number, and a force refresh from any visitor moves it for all of them.
    ========================================================================== */
 
+import { createPipeline } from '/pipeline.js';
+
+let pipeline = null;
+
 const els = {
   map: document.getElementById('map'),
   mapDetail: document.getElementById('mapdetail'),
@@ -40,6 +44,7 @@ const els = {
   collapseAll: document.getElementById('collapse-all'),
   footerSource: document.getElementById('footer-source'),
   footerMatch: document.getElementById('footer-match'),
+  footerDiagnostics: document.getElementById('footer-diagnostics'),
 };
 
 const NO_DATA_COLOR = '#3a3a3a';
@@ -150,13 +155,11 @@ async function initMap() {
 
   let geo;
   try {
-    const res = await fetch('/api/wards.geojson');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    geo = await res.json();
+    geo = await pipeline.wardsGeoJson();
   } catch (err) {
     els.map.innerHTML =
       '<p style="padding:1.5rem;color:#9ba0a6;font-size:0.875rem">Ward boundaries could not be loaded. ' +
-      'Run <code>npm run fetch:wards</code> on the server.</p>';
+      'Check that data/ad76-wards.geojson was published with the site.</p>';
     return;
   }
 
@@ -322,6 +325,11 @@ function renderStatus() {
       ? 'not published yet'
       : '—';
 
+  // Say plainly whether the schedule is genuinely shared or wall-clock derived.
+  if (!state.refreshLockUntil) {
+    els.refreshHint.textContent = s.sharedStateAvailable === false ? 'refreshes this browser' : 'refreshes for everyone';
+  }
+
   els.countdownSub.textContent =
     s.phase === 'active'
       ? `every ${Math.round((s.intervalMs ?? 0) / 1000)}s while results come in`
@@ -347,6 +355,19 @@ function renderStatus() {
   const srcBits = [`Source: Dane County Clerk (${p.source.mode})`];
   if (p.source.fellBackFrom) srcBits.push(`fell back from ${p.source.fellBackFrom}`);
   els.footerSource.textContent = srcBits.join(' · ') + '.';
+
+  // In server mode the health/log endpoints exist; on static hosting they do
+  // not, so surface the same diagnostics inline instead of linking nowhere.
+  if (s.sharedStateAvailable === false) {
+    const problems = (p.matching?.unmatched ?? []).map((u) => `${u.precinctName}: ${u.reason}`);
+    els.footerDiagnostics.textContent = problems.length
+      ? `Ward-match problems: ${problems.join('; ')}`
+      : 'Static build: no backend, so each visitor reads the county API directly. ' +
+        'The countdown is derived from the clock, so all visitors share it; force refresh affects only your browser.';
+  } else {
+    els.footerDiagnostics.innerHTML =
+      'Pipeline status: <a href="/api/health">/api/health</a> · <a href="/api/logs">/api/logs</a>';
+  }
 
   const m = p.matching;
   els.footerMatch.textContent = m
@@ -691,17 +712,17 @@ els.refreshBtn.addEventListener('click', async () => {
   els.refreshBtn.disabled = true;
   els.refreshHint.textContent = 'requesting…';
   try {
-    const res = await fetch('/api/refresh', { method: 'POST' });
-    const body = await res.json();
+    const body = await pipeline.forceRefresh();
     applySchedule(body.schedule);
 
     if (body.debounced) {
-      // Someone else just forced a refresh. Say so rather than pretending.
+      // Server mode: someone else just forced a refresh. Static mode: this
+      // browser just did. Either way, say so rather than pretending.
       const secs = Math.ceil((body.retryAfterMs ?? 0) / 1000);
-      els.refreshHint.textContent = `just refreshed — wait ${secs}s`;
+      els.refreshHint.textContent = body.localOnly ? `just refreshed — wait ${secs}s` : `someone else just refreshed — wait ${secs}s`;
       state.refreshLockUntil = Date.now() + (body.retryAfterMs ?? 0);
     } else {
-      els.refreshHint.textContent = 'refreshed for everyone';
+      els.refreshHint.textContent = body.localOnly ? 'refreshed this browser' : 'refreshed for everyone';
       state.refreshLockUntil = Date.now() + (state.schedule?.forceRefreshCooldownMs ?? 12000);
     }
     await loadResults();
@@ -733,15 +754,7 @@ function applySchedule(schedule) {
 
 async function loadResults() {
   try {
-    const res = await fetch('/api/results', { cache: 'no-store' });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      applySchedule(body.schedule);
-      renderStatus();
-      scheduleNextPoll();
-      return;
-    }
-    const payload = await res.json();
+    const payload = await pipeline.results();
     state.payload = payload;
     state.display = payload.display ?? state.display;
     applySchedule(payload.schedule);
@@ -756,10 +769,11 @@ async function loadResults() {
     renderDetail();
   } catch (err) {
     // Leave the last good render in place; the stale badge covers the gap.
+    applySchedule(err.schedule);
     if (state.schedule) {
       state.schedule = { ...state.schedule, consecutiveFailures: (state.schedule.consecutiveFailures ?? 0) + 1 };
-      renderStatus();
     }
+    renderStatus();
   } finally {
     scheduleNextPoll();
   }
@@ -783,6 +797,11 @@ function scheduleNextPoll() {
 
 /* ------------------------------------------------------------------ boot */
 
-initMap().then(() => restyleAll());
-loadResults();
-setInterval(tickCountdown, 250);
+(async () => {
+  pipeline = await createPipeline();
+  document.body.dataset.mode = pipeline.mode;
+  await initMap();
+  restyleAll();
+  await loadResults();
+  setInterval(tickCountdown, 250);
+})();

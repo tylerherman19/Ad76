@@ -1,0 +1,71 @@
+# Deploy the static build to GitHub Pages.
+#
+# The static build has no backend: the browser calls the Dane County JSON API
+# directly (it sends Access-Control-Allow-Origin: *) and runs the shared/
+# modules itself. See README "Two deployments" for what this can and cannot do
+# compared with running the Node server.
+#
+# To point it at the real primary, set election.electionId in
+# config/default.json (or the ELECTION_ID repo variable) and push.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md']
+  workflow_dispatch:
+    inputs:
+      election_id:
+        description: 'Dane County election id (overrides config for this build)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never cancel a half-finished deploy; queue instead.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build static site
+        env:
+          # Serve from /<repo>/ unless a custom domain puts the site at the root.
+          PAGES_BASE_PATH: ${{ github.event.repository.has_custom_domain && '' || format('/{0}', github.event.repository.name) }}
+          ELECTION_ID: ${{ inputs.election_id || vars.ELECTION_ID }}
+        run: npm run build:static
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

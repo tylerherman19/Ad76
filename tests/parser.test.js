@@ -1,9 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { parsePrecinctName, displayWardLabel, wardKey } from '../src/precinctName.js';
+import { parsePrecinctName, displayWardLabel, wardKey } from '../shared/precinctName.js';
 import { parseVotes, parsePercent, parseElectionPage, parsePrecinctPage, extractReporting, extractCountyTimestamp } from '../src/sources/html.js';
-import { assignCandidateColors, marginStrength } from '../src/colors.js';
+import { assignCandidateColors, marginStrength } from '../shared/colors.js';
+import { readFileSync } from 'node:fs';
+
+// Load the real config, so these tests pin the values that actually ship
+// rather than a copy that can drift from config/default.json.
+const rawConfig = JSON.parse(readFileSync(new URL('../config/default.json', import.meta.url), 'utf8'));
+const strip = (v) => Array.isArray(v) ? v.map(strip)
+  : v && typeof v === 'object'
+    ? Object.fromEntries(Object.entries(v).filter(([k]) => !k.startsWith('//')).map(([k, x]) => [k, strip(x)]))
+    : v;
+const CONFIG = strip(rawConfig);
+const CANDS = CONFIG.candidates;
+const MARGIN = CONFIG.margin;
 
 // ---------------------------------------------------------------------------
 // Precinct label parsing. Shapes below are the real ones observed in Dane
@@ -159,10 +171,10 @@ test('partial reporting keeps reported and non-reported units distinct', () => {
 test('Martinez-Rutherford is locked to Sky Blue regardless of scrape order', () => {
   const order1 = assignCandidateColors([
     { name: 'Dina Nina Martinez-Rutherford' }, { name: 'Zoe Sullivan' }, { name: 'Juliana Bennett' },
-  ]);
+  ], CANDS);
   const order2 = assignCandidateColors([
     { name: 'Zoe Sullivan' }, { name: 'Juliana Bennett' }, { name: 'Dina Nina Martinez-Rutherford' },
-  ]);
+  ], CANDS);
   assert.equal(order1.find((c) => /Martinez/.test(c.name)).color, '#56B4E9');
   assert.equal(order2.find((c) => /Martinez/.test(c.name)).color, '#56B4E9');
   // And she never consumes a palette slot from the others.
@@ -178,7 +190,7 @@ test('remaining candidates take the palette in scrape order, write-ins get neutr
     { name: 'Dina Nina Martinez-Rutherford' },
     { name: 'Zoe Sullivan' },
     { name: 'write-in:' },
-  ]);
+  ], CANDS);
   assert.deepEqual(
     assigned.map((c) => c.color),
     ['#E69F00', '#009E73', '#CC79A7', '#56B4E9', '#D55E00', '#6B6B6B'],
@@ -187,11 +199,11 @@ test('remaining candidates take the palette in scrape order, write-ins get neutr
 });
 
 test('margin scale is monotonic and clamped at both ends', () => {
-  const lightest = marginStrength(0);
-  const narrow = marginStrength(0.05);
-  const mid = marginStrength(0.30);
-  const landslide = marginStrength(0.50);
-  const blowout = marginStrength(0.95);
+  const lightest = marginStrength(0, MARGIN);
+  const narrow = marginStrength(0.05, MARGIN);
+  const mid = marginStrength(0.30, MARGIN);
+  const landslide = marginStrength(0.50, MARGIN);
+  const blowout = marginStrength(0.95, MARGIN);
 
   assert.equal(lightest, narrow, 'anything at or below the light threshold is the lightest tint');
   assert.ok(narrow < mid && mid < landslide, 'strength increases with margin');

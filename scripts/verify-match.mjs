@@ -16,7 +16,7 @@ import { listElections, findRaceNumber, fetchApiResults } from '../src/sources/a
 import { fetchHtmlResults } from '../src/sources/html.js';
 import { matchUnitsToWards } from '../src/match.js';
 import { loadWards } from '../src/geo/wards.js';
-import { parsePrecinctName, displayWardLabel } from '../src/precinctName.js';
+import { parsePrecinctName, displayWardLabel } from '../shared/precinctName.js';
 
 const arg = process.argv[2];
 const pattern = config.election.raceNamePattern;
