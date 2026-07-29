@@ -1,0 +1,49 @@
+# Fly.io deployment.
+#   fly launch --no-deploy --copy-config
+#   fly secrets set ELECTION_ID=<id>
+#   fly deploy
+#
+# A single always-on machine, on purpose: the refresh countdown and the
+# force-refresh debounce are shared state owned by this process. Scaling to
+# multiple machines would give each one its own countdown and its own cooldown,
+# so visitors would see different timers and a click burst could hit the county
+# once per machine. Keep min/max machines at 1 unless you move that state into
+# a shared store first.
+
+app = "ad76-results"
+primary_region = "ord"          # Chicago — closest to Dane County
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  SOURCE_MODE = "api"
+  IDLE_INTERVAL_MS = "60000"
+  ACTIVE_INTERVAL_MS = "15000"
+  REPORTING_THRESHOLD = "1"
+  FORCE_REFRESH_COOLDOWN_MS = "12000"
+  STALE_AFTER_MS = "180000"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false    # never sleep on election night
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 400
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  grace_period = "15s"
+  method = "GET"
+  path = "/api/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

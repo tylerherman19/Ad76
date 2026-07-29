@@ -20,8 +20,8 @@
   },
 
   "source": {
-    "//mode": "'html' scrapes elections.danecounty.gov (the source named in the build spec). 'api' uses api.danecounty.gov JSON. 'auto' tries html first, then falls back to api. See README 'Data source reality check'.",
-    "mode": "auto",
+    "//mode": "'api' uses the api.danecounty.gov JSON Election endpoints — the election-night default, because the HTML host refuses datacenter IPs via Cloudflare and the JSON is the same backing data. 'html' scrapes elections.danecounty.gov only. 'auto' tries html first and falls back to api. See README 'Data sources'.",
+    "mode": "api",
     "htmlBaseUrl": "https://elections.danecounty.gov",
     "apiBaseUrl": "https://api.danecounty.gov/api/v1/elections",
     "requestTimeoutMs": 20000,

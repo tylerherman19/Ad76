@@ -70,9 +70,8 @@ The HTML results site sits behind Cloudflare and returns **HTTP 403** to cloud/d
 egress IPs. Verified: `elections.danecounty.gov` 403s on every path, while
 `www.danecounty.gov` and `api.danecounty.gov` return 200 from the same host.
 
-This matters because a deployed backend *is* a datacenter IP. **Test the HTML scrape
-from your actual deployment target before election night** — see
-[Pre-flight checklist](#pre-flight-checklist).
+This matters because a deployed backend *is* a datacenter IP. It is the main reason the
+JSON API, not the scraper, is the election-night default — see finding 4.
 
 ### 4. The `api.danecounty.gov` deprecation notice is on the **Press** API, not Elections
 
@@ -83,26 +82,29 @@ heading. The **Election** API section carries no deprecation notice, and its end
 are live and current — `/elections/list` returns elections through the April 2026
 Spring Election.
 
-The HTML scraper is still the **primary** source, as asked. The JSON API is wired up as
-a **fallback** because it is reachable from exactly the environments where the HTML site
-is not. Behaviour is controlled by `SOURCE_MODE`:
+**The JSON API is the election-night default** (`SOURCE_MODE=api`). It is the same
+backing data as the HTML pages, it returns structured JSON instead of markup that can
+be restyled between elections, and — decisively — it is reachable from the datacenter
+IPs where the backend actually runs, while the HTML host is not. The HTML scraper is
+fully implemented and kept as a selectable source.
 
-| `SOURCE_MODE`    | Behaviour                                                      |
-| ---------------- | -------------------------------------------------------------- |
-| `html`           | Scrape only. Fails loudly if Cloudflare blocks it.              |
-| `api`            | JSON API only.                                                  |
-| `auto` (default) | HTML first; on failure log the reason and fall back to the API. |
+| `SOURCE_MODE`   | Behaviour                                                       |
+| --------------- | --------------------------------------------------------------- |
+| `api` (default) | JSON API only. What runs on election night.                      |
+| `html`          | Scrape `elections.danecounty.gov` only. Fails loudly if blocked. |
+| `auto`          | HTML first; on failure log the reason and fall back to the API.  |
 
 The active source is shown in the page footer and at `/api/health`, so you always know
 which one produced the numbers on screen.
 
-> **Verification status of the HTML parser.** The build environment is itself a
-> datacenter IP, so the HTML parser could not be exercised against live markup from
-> here. It is written defensively (columns located by header text, not by index; race
-> located by heading match, not nth-child) and is covered by fixture tests for the
-> zero- and partial-reporting states. Run `npm run verify:source` from a normal network
-> to confirm it against the real pages and to save fixtures. The ward-matching layer,
-> by contrast, **is** verified against live county data — see below.
+The API path is verified end to end against real county data (see below). The HTML
+parser is not: the build environment is itself a datacenter IP and hits the same
+Cloudflare 403, so it could not be exercised against live markup. It is written
+defensively (columns located by header text, not by index; race located by heading
+match, not nth-child) and is covered by fixture tests for the zero- and
+partial-reporting states. If you ever need to switch to it, run
+`npm run verify:source` from a normal network first to confirm it against the real
+pages and save fixtures.
 
 ---
 
@@ -317,18 +319,37 @@ Any host that runs a container or a long-lived Node process.
 
 ```bash
 docker build -t ad76 .
-docker run -p 8080:8080 -e ELECTION_ID=195 -e SOURCE_MODE=auto ad76
+docker run -p 8080:8080 -e ELECTION_ID=<id> ad76
+```
+
+Ready-made configs are included for the two most common one-command hosts:
+
+```bash
+# Fly.io
+fly launch --no-deploy --copy-config    # uses fly.toml
+fly secrets set ELECTION_ID=<id>
+fly deploy
+
+# Render — push the repo, then New > Blueprint (uses render.yaml),
+# and set ELECTION_ID in the dashboard.
 ```
 
 Set at minimum:
 
 ```
 ELECTION_ID=<the August 11 2026 primary id>
-SOURCE_MODE=auto
 PORT=8080
 ```
 
-`data/ad76-wards.geojson` is committed, so the image needs no GIS access at runtime.
+`SOURCE_MODE` already defaults to `api`. `data/ad76-wards.geojson` is committed, so the
+image needs no GIS access at runtime.
+
+> **Run exactly one instance.** The refresh countdown and the force-refresh cooldown are
+> shared state held in process memory — that is what makes every visitor see the same
+> timer and a click burst produce one upstream request. Two instances means two
+> countdowns and two cooldowns. Both included configs pin the instance count to 1. If
+> you ever need to scale out, move `nextScheduledFetchAt` and `lastForceRefreshAt` in
+> `src/scheduler.js` into Redis first.
 
 ### Pre-flight checklist
 
@@ -340,14 +361,15 @@ Do these **before** election night, not during it:
    As of this build the newest published election is `190` (April 7 2026); ids advance
    by roughly 2–5 per election, so expect something in the low 190s. **Do not guess** —
    the app renders its pre-election state safely until you set a real one.
-2. **Confirm your deploy target can reach the HTML site.** From the deployed host:
-   `curl -sI https://elections.danecounty.gov/ | head -1`. A `403` means Cloudflare is
-   blocking that IP and `SOURCE_MODE=auto` will be serving API data — fine, but know it.
-3. **Run `npm run verify:source -- <electionId>`** once the race is posted, to confirm
-   the HTML parser against the real markup and save fixtures.
-4. **Run `npm run verify:match -- <electionId>`** and confirm zero unmatched units.
-5. **Confirm the candidate list** matches `config.election.expectedCandidates`, and that
+2. **Run `npm run verify:match -- <electionId>`** once the race is posted, and confirm
+   zero unmatched units. This exercises the live API path end to end.
+3. **Confirm the candidate list** matches `config.election.expectedCandidates`, and that
    Martinez-Rutherford resolves to `#56B4E9` in the legend.
+4. **Check `/api/health` returns `status: "ok"`** from the deployed host, with
+   `source.activeMode: "api"` and `matching.unmatched: []`.
+5. **Optional** — if you want the HTML scraper as a live fallback, run
+   `npm run verify:source -- <electionId>` from a non-datacenter network to confirm the
+   parser against real markup, then set `SOURCE_MODE=auto`.
 
 ---
 
@@ -363,8 +385,8 @@ src/colors.js             candidate colours + shared margin scale (single source
 src/normalize.js          raw fetch -> frontend payload; never-fabricate rules live here
 src/scheduler.js          shared countdown, backoff, force-refresh debounce
 src/server.js             Express routes
-src/sources/html.js       primary: elections.danecounty.gov scraper
-src/sources/api.js        fallback: api.danecounty.gov JSON
+src/sources/html.js       elections.danecounty.gov scraper (selectable)
+src/sources/api.js        api.danecounty.gov JSON (election-night default)
 src/geo/wards.js          ward GeoJSON loading and indexing
 scripts/fetch-wards.mjs   pull ward boundaries from Dane County GIS
 scripts/verify-match.mjs  ward-matching verification
@@ -375,8 +397,9 @@ data/ad76-wards.geojson   committed ward boundaries
 
 ## Data sources
 
-- **Results** — Dane County Clerk, `https://elections.danecounty.gov` (primary),
-  `https://api.danecounty.gov/api/v1/elections` (fallback).
+- **Results** — Dane County Clerk. `https://api.danecounty.gov/api/v1/elections`
+  (election-night default); `https://elections.danecounty.gov` scraper available via
+  `SOURCE_MODE=html` or `auto`.
 - **Ward boundaries** — Dane County GIS, `DaneCountyBase/MapServer/18` "Ward Boundaries",
   filtered `AsmDistrict='76'`. Carries `AldDistrict`, so alder-district grouping comes
   from the county's own attribute rather than a hand-maintained lookup.

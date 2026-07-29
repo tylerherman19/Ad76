@@ -1,0 +1,32 @@
+# Render deployment (Blueprint). Push this repo, then "New > Blueprint" in Render.
+#
+# numInstances is pinned to 1 deliberately: the shared refresh countdown and the
+# force-refresh debounce live in process memory. More than one instance means
+# more than one countdown and more than one cooldown.
+services:
+  - type: web
+    name: ad76-results
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: ohio
+    numInstances: 1
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 8080
+      - key: SOURCE_MODE
+        value: api
+      - key: ELECTION_ID
+        sync: false          # set this in the Render dashboard once the county posts the primary
+      - key: IDLE_INTERVAL_MS
+        value: 60000
+      - key: ACTIVE_INTERVAL_MS
+        value: 15000
+      - key: REPORTING_THRESHOLD
+        value: 1
+      - key: FORCE_REFRESH_COOLDOWN_MS
+        value: 12000
+      - key: STALE_AFTER_MS
+        value: 180000
