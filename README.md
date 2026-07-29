@@ -435,6 +435,12 @@ explanation if Cloudflare blocks it.
 > “pages build and deployment” run that overrides this workflow's deployment.
 > “GitHub Actions” is the only correct source; there is no branch or folder to choose
 > after selecting it.
+>
+> After selecting it, GitHub offers two starter-workflow cards — **“GitHub Pages Jekyll”**
+> and **“Static HTML”** — each with a *Configure* button. **Ignore both.** They add a new
+> workflow file that would compete with `.github/workflows/pages.yml`, which already
+> builds and deploys this site. Nothing else needs configuring: the next push to `main`
+> deploys.
 
 Enabling Pages cannot be automated from the workflow — a workflow's default
 `GITHUB_TOKEN` is not allowed to create a Pages site (`configure-pages` fails with
