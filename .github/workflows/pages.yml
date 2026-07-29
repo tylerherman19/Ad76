@@ -54,7 +54,12 @@ jobs:
           ELECTION_ID: ${{ inputs.election_id || vars.ELECTION_ID }}
         run: npm run build:static
 
+      # enablement:true asks GitHub to turn Pages on (source: GitHub Actions) if
+      # it is not already, so a fresh repo does not need the settings toggle
+      # flipped by hand first.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v3
         with:
