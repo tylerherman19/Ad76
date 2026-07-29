@@ -377,7 +377,13 @@ explanation if Cloudflare blocks it.
 ### GitHub Pages (static)
 
 `.github/workflows/pages.yml` builds `dist/` and deploys on every push to `main`.
-Enable Pages once: **Settings → Pages → Source: GitHub Actions**.
+
+**One-time manual step:** enable Pages at **Settings → Pages → Source: GitHub Actions**.
+This genuinely cannot be automated from the workflow — a workflow's default
+`GITHUB_TOKEN` is not allowed to create a Pages site (`configure-pages` fails with
+"Resource not accessible by integration"), and doing it via the API needs a PAT with
+`repo` scope. Once the toggle is set, every push to `main` deploys with no further
+intervention.
 
 To point it at the real primary, either set `election.electionId` in
 `config/default.json` and push, or add an `ELECTION_ID` repository variable
