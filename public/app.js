@@ -49,6 +49,11 @@ const els = {
   scoreboardNote: document.getElementById('scoreboard-note'),
   viewWard: document.getElementById('view-ward'),
   viewDistrict: document.getElementById('view-district'),
+  trendWrap: document.getElementById('trend-wrap'),
+  trendSpark: document.getElementById('trend-spark'),
+  toastStack: document.getElementById('toast-stack'),
+  soundToggle: document.getElementById('sound-toggle'),
+  soundToggleLabel: document.getElementById('sound-toggle-label'),
 };
 
 const NO_DATA_COLOR = '#d6d6d6';
@@ -72,6 +77,7 @@ const state = {
   layersByWardKey: new Map(),
   pollTimer: null,
   refreshLockUntil: 0,
+  soundEnabled: localStorage.getItem('ad76-sound') === '1',
 };
 
 /* --------------------------------------------------------------- helpers */
@@ -451,6 +457,127 @@ function renderScoreboard() {
     })
     .join('');
 }
+
+/* ----------------------------------------------------------- momentum */
+
+/** Sparkline of the district-wide leading margin across every successful fetch. */
+function renderTrend() {
+  const points = state.payload?.trend ?? [];
+  if (points.length < 2) {
+    els.trendWrap.hidden = true;
+    return;
+  }
+  els.trendWrap.hidden = false;
+
+  const w = 600, h = 46, pad = 3;
+  const maxMargin = Math.max(10, (state.display?.margin?.fullStrengthMargin ?? 0.5) * 100);
+  const n = points.length;
+  const x = (i) => pad + (i / (n - 1)) * (w - pad * 2);
+  const y = (m) => {
+    const v = Math.max(0, Math.min(maxMargin, m ?? 0));
+    return h - pad - (v / maxMargin) * (h - pad * 2);
+  };
+
+  let segs = '';
+  for (let i = 1; i < n; i++) {
+    const a = points[i - 1];
+    const b = points[i];
+    const color = b.tied ? '#b9bec4' : b.leaderColor ?? NO_DATA_COLOR;
+    segs += `<line x1="${x(i - 1).toFixed(1)}" y1="${y(a.marginPct).toFixed(1)}" x2="${x(i).toFixed(1)}" y2="${y(b.marginPct).toFixed(1)}" stroke="${color}" stroke-width="2" stroke-linecap="round" />`;
+  }
+  const last = points[n - 1];
+  const dotColor = last.tied ? '#b9bec4' : last.leaderColor ?? NO_DATA_COLOR;
+
+  els.trendSpark.innerHTML =
+    `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img" aria-label="Leading margin over the course of the night">` +
+    segs +
+    `<circle cx="${x(n - 1).toFixed(1)}" cy="${y(last.marginPct).toFixed(1)}" r="3.5" fill="${dotColor}" />` +
+    `</svg>`;
+}
+
+/* -------------------------------------------------------- milestone alerts */
+
+let audioCtx = null;
+function ensureAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+/** Short synthesised beep — no audio asset to fetch or fail to load. */
+function playAlertSound() {
+  if (!state.soundEnabled || !audioCtx) return;
+  const ctx = audioCtx;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.frequency.value = 720;
+  osc.type = 'sine';
+  gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start();
+  osc.stop(ctx.currentTime + 0.4);
+}
+
+let toastSeq = 0;
+function pushToast(text, kind = 'leader') {
+  const el = document.createElement('div');
+  el.className = `toast toast--${kind}`;
+  el.id = `toast-${++toastSeq}`;
+  el.textContent = text;
+  els.toastStack.appendChild(el);
+  playAlertSound();
+  setTimeout(() => {
+    el.classList.add('is-leaving');
+    setTimeout(() => el.remove(), 400);
+  }, 8000);
+}
+
+/**
+ * Diff the previous and current payload for things worth interrupting for:
+ * the district-wide leader flipping, a district finishing, or the whole
+ * district hitting 100%. Never fires on the first load (prev is null) and
+ * never treats a tie as a "flip" in either direction.
+ */
+function checkMilestones(prev, next) {
+  if (!prev || !next) return;
+
+  const prevLeader = prev.summary?.leader && !prev.summary.leader.tied ? prev.summary.leader.name : null;
+  const nextLeader = next.summary?.leader && !next.summary.leader.tied ? next.summary.leader.name : null;
+  if (prevLeader && nextLeader && prevLeader !== nextLeader) {
+    pushToast(`District lead flips: ${nextLeader} overtakes ${prevLeader}`, 'leader');
+  }
+
+  const prevByKey = new Map((prev.groups ?? []).map((g) => [g.key, g]));
+  for (const g of next.groups ?? []) {
+    const before = prevByKey.get(g.key);
+    if (before && g.totalUnits > 0 && before.reportedUnits < before.totalUnits && g.reportedUnits === g.totalUnits) {
+      const lead = g.leader && !g.leader.tied ? ` — ${g.leader.name} leads` : '';
+      pushToast(`${g.label} fully reported${lead}`, 'district');
+    }
+  }
+
+  const pr = prev.reporting;
+  const nr = next.reporting;
+  if (pr && nr && nr.wardsTotal > 0 && pr.wardsReported < pr.wardsTotal && nr.wardsReported === nr.wardsTotal) {
+    pushToast('All AD76 wards have reported.', 'district');
+  }
+}
+
+els.soundToggle.addEventListener('click', () => {
+  state.soundEnabled = !state.soundEnabled;
+  localStorage.setItem('ad76-sound', state.soundEnabled ? '1' : '0');
+  els.soundToggle.setAttribute('aria-pressed', String(state.soundEnabled));
+  els.soundToggleLabel.textContent = state.soundEnabled ? '🔔 Alerts on' : '🔕 Alerts muted';
+  if (state.soundEnabled) {
+    ensureAudioCtx();
+    playAlertSound();
+  }
+});
+els.soundToggle.setAttribute('aria-pressed', String(state.soundEnabled));
+els.soundToggleLabel.textContent = state.soundEnabled ? '🔔 Alerts on' : '🔕 Alerts muted';
+if (state.soundEnabled) ensureAudioCtx();
 
 /* --------------------------------------------------------------- status */
 
@@ -1014,6 +1141,7 @@ function applySchedule(schedule) {
 }
 
 async function loadResults() {
+  const prevPayload = state.payload;
   try {
     const payload = await pipeline.results();
     state.payload = payload;
@@ -1024,11 +1152,13 @@ async function loadResults() {
 
     renderLegend();
     renderSummary();
+    renderTrend();
     renderScoreboard();
     renderStatus();
     renderTable();
     restyleAll();
     renderDetail();
+    checkMilestones(prevPayload, payload);
   } catch (err) {
     // Leave the last good render in place; the stale badge covers the gap.
     applySchedule(err.schedule);

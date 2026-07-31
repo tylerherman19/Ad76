@@ -24,6 +24,7 @@ import { buildWardIndex, wardsToGeoJson } from '/shared/wardIndex.js';
 import { buildPayload, buildPlaceholderPayload } from '/shared/normalize.js';
 import { fetchCountyResults } from '/shared/countyApi.js';
 import { staticScheduleInfo, phaseFor, intervalFor } from '/shared/schedule.js';
+import { trendPointFrom, pushTrendPoint, MAX_TREND_POINTS } from '/shared/trend.js';
 
 /* ------------------------------------------------------------ server mode */
 
@@ -69,6 +70,7 @@ class StaticPipeline {
     this.consecutiveFailures = 0;
     this.lastForceRefreshAt = null;
     this.lastPayload = null;
+    this.history = [];
   }
 
   warn(event, detail) {
@@ -124,7 +126,7 @@ class StaticPipeline {
           'Set election.electionId in config/default.json and redeploy once it is listed.',
       );
       this.lastPayload = payload;
-      return { ...payload, schedule: this.buildSchedule(payload), display: this.display() };
+      return { ...payload, schedule: this.buildSchedule(payload), display: this.display(), trend: this.history };
     }
 
     try {
@@ -137,7 +139,8 @@ class StaticPipeline {
       this.consecutiveFailures = 0;
       this.lastError = null;
       this.lastPayload = payload;
-      return { ...payload, schedule: this.buildSchedule(payload), display: this.display() };
+      this.history = pushTrendPoint(this.history, trendPointFrom(payload, Date.now()), MAX_TREND_POINTS);
+      return { ...payload, schedule: this.buildSchedule(payload), display: this.display(), trend: this.history };
     } catch (err) {
       this.lastFailureAt = new Date().toISOString();
       this.consecutiveFailures += 1;
@@ -153,16 +156,16 @@ class StaticPipeline {
           `Election ${electionId} exists, but the AD76 race has not been posted yet.`,
         );
         this.lastPayload = payload;
-        return { ...payload, schedule: this.buildSchedule(payload), display: this.display() };
+        return { ...payload, schedule: this.buildSchedule(payload), display: this.display(), trend: this.history };
       }
 
       // Keep the last good payload on screen; the stale badge covers the gap.
       if (this.lastPayload) {
-        return { ...this.lastPayload, schedule: this.buildSchedule(this.lastPayload), display: this.display() };
+        return { ...this.lastPayload, schedule: this.buildSchedule(this.lastPayload), display: this.display(), trend: this.history };
       }
       const payload = buildPlaceholderPayload(wardIndex, this.config, `Could not reach the county API: ${err.message}`);
       this.lastPayload = payload;
-      return { ...payload, schedule: this.buildSchedule(payload), display: this.display() };
+      return { ...payload, schedule: this.buildSchedule(payload), display: this.display(), trend: this.history };
     }
   }
 

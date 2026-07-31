@@ -15,12 +15,44 @@
  * out of the loop and never blocks the following cycle.
  */
 
-import config from './config.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import config, { ROOT } from './config.js';
 import log from './logger.js';
 import fetchResults from './sources/index.js';
 import { buildPayload, buildPlaceholderPayload as makePlaceholder } from './normalize.js';
+import { trendPointFrom, pushTrendPoint, MAX_TREND_POINTS } from '../shared/trend.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Last-good-payload snapshot, written to disk after every successful fetch so
+ * a process restart (crash, redeploy, host reboot) mid-election-night does not
+ * blank the map for the gap before the next fetch succeeds. Loaded once at
+ * startup and immediately treated as stale — it is never mistaken for a fresh
+ * result, only shown until a real fetch replaces it.
+ */
+const SNAPSHOT_FILE = path.join(ROOT, '.cache', 'last-payload.json');
+
+function loadSnapshot() {
+  try {
+    if (!fs.existsSync(SNAPSHOT_FILE)) return null;
+    const raw = JSON.parse(fs.readFileSync(SNAPSHOT_FILE, 'utf8'));
+    return raw?.payload ? raw : null;
+  } catch (err) {
+    log.warn('scheduler.snapshot_load_failed', { message: err.message });
+    return null;
+  }
+}
+
+function saveSnapshot(payload, lastSuccessAt) {
+  try {
+    fs.mkdirSync(path.dirname(SNAPSHOT_FILE), { recursive: true });
+    fs.writeFileSync(SNAPSHOT_FILE, JSON.stringify({ savedAt: new Date().toISOString(), lastSuccessAt, payload }));
+  } catch (err) {
+    log.warn('scheduler.snapshot_save_failed', { message: err.message });
+  }
+}
 
 /** Shared, process-wide state. */
 const state = {
@@ -40,6 +72,7 @@ const state = {
   forceRefreshesAccepted: 0,
   forceRefreshesDebounced: 0,
   running: false,
+  history: [],
 };
 
 let timer = null;
@@ -97,6 +130,8 @@ async function attemptFetch(trigger) {
       state.consecutiveFailures = 0;
       state.successCount += 1;
       state.lastError = null;
+      state.history = pushTrendPoint(state.history, trendPointFrom(state.payload, Date.now()), MAX_TREND_POINTS);
+      saveSnapshot(state.payload, state.lastSuccessAt);
       log.info('scrape.success', {
         trigger,
         attempt,
@@ -170,6 +205,14 @@ async function runCycle(trigger) {
 export async function start() {
   if (state.running) return;
   state.running = true;
+
+  const snap = loadSnapshot();
+  if (snap) {
+    state.payload = snap.payload;
+    state.lastSuccessAt = snap.lastSuccessAt ?? snap.savedAt;
+    log.info('scheduler.snapshot_restored', { savedAt: snap.savedAt, lastSuccessAt: state.lastSuccessAt });
+  }
+
   log.info('scheduler.start', {
     idleIntervalMs: config.polling.idleIntervalMs,
     activeIntervalMs: config.polling.activeIntervalMs,
@@ -251,4 +294,9 @@ export function getState() {
 
 export function getPayload() {
   return state.payload;
+}
+
+/** District-wide momentum snapshots, oldest first, for the frontend sparkline. */
+export function getTrend() {
+  return state.history;
 }

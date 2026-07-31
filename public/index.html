@@ -51,6 +51,9 @@
 
     <div class="statusbar__actions">
       <div class="badge badge--hidden" id="stale-badge" role="status"></div>
+      <button class="sound-toggle" id="sound-toggle" type="button" aria-pressed="false" title="Play a sound on leader changes and districts finishing">
+        <span id="sound-toggle-label">🔕 Alerts muted</span>
+      </button>
       <button class="refresh-btn" id="refresh-btn" type="button">
         <span class="refresh-btn__label">Force refresh</span>
         <span class="refresh-btn__hint" id="refresh-hint">refreshes for everyone</span>
@@ -60,6 +63,10 @@
   </div>
 </section>
 
+<!-- Milestone toasts: leader changes, districts finishing. aria-live so screen
+     readers announce them without focus theft. -->
+<div class="toaststack" id="toast-stack" aria-live="polite" aria-atomic="false"></div>
+
 <!-- District-wide summary -->
 <section class="summary" aria-labelledby="summary-heading">
   <div class="summary__inner">
@@ -68,6 +75,10 @@
       <p class="summary__pending">No wards have reported yet.</p>
     </div>
     <ol class="summary__bars" id="summary-bars"></ol>
+    <div class="trendwrap" id="trend-wrap" hidden>
+      <p class="trendwrap__label">Leading margin, over the night</p>
+      <div id="trend-spark"></div>
+    </div>
   </div>
 </section>
 

@@ -1,13 +1,32 @@
 import path from 'node:path';
 import express from 'express';
+import compression from 'compression';
 import config, { ROOT } from './config.js';
 import log from './logger.js';
 import { wardsGeoJson, loadWards } from './geo/wards.js';
 import { clientColorConfig } from './colors.js';
-import { start, stop, forceRefresh, getPayload, getState, scheduleInfo, isStale } from './scheduler.js';
+import { start, stop, forceRefresh, getPayload, getState, scheduleInfo, isStale, getTrend } from './scheduler.js';
+
+/**
+ * Election-night safety net: an uncaught exception or unhandled rejection
+ * anywhere (a stray promise, a third-party bug) would otherwise kill the
+ * process with no supervisor to bring it back. Logging and continuing keeps
+ * the map on screen; the alternative (crash) is strictly worse for a live
+ * results page than a logged, survived error.
+ */
+process.on('uncaughtException', (err) => {
+  log.error('process.uncaught_exception', { message: err.message, stack: err.stack });
+});
+process.on('unhandledRejection', (reason) => {
+  log.error('process.unhandled_rejection', {
+    message: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined,
+  });
+});
 
 const app = express();
 app.disable('x-powered-by');
+app.use(compression());
 
 // ---------------------------------------------------------------- static ---
 app.use(express.static(path.join(ROOT, 'public'), { maxAge: '5m', index: 'index.html' }));
@@ -43,6 +62,7 @@ app.get('/api/results', (req, res) => {
     ...payload,
     schedule: scheduleInfo(),
     display: clientColorConfig(),
+    trend: getTrend(),
   });
 });
 
