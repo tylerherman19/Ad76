@@ -131,7 +131,13 @@ class StaticPipeline {
 
     try {
       const raw = await fetchCountyResults(
-        { baseUrl: this.config.source.apiBaseUrl, electionId, raceNamePattern, raceNumber },
+        {
+          baseUrl: this.config.source.apiBaseUrl,
+          electionId,
+          raceNamePattern,
+          raceNumber,
+          countyTimeZone: this.config.source.countyTimeZone,
+        },
         { timeoutMs: this.config.source.requestTimeoutMs },
       );
       const payload = buildPayload(raw, wardIndex, this.config, (e, d) => this.warn(e, d));

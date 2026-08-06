@@ -28,6 +28,12 @@ export const findRaceNumber = (electionId, raceNamePattern) =>
 
 export const fetchApiResults = ({ electionId, raceNamePattern, raceNumber }) =>
   fetchCountyResults(
-    { baseUrl: config.source.apiBaseUrl, electionId, raceNamePattern, raceNumber },
+    {
+      baseUrl: config.source.apiBaseUrl,
+      electionId,
+      raceNamePattern,
+      raceNumber,
+      countyTimeZone: config.source.countyTimeZone,
+    },
     opts(),
   );

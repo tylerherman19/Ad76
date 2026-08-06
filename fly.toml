@@ -37,6 +37,11 @@ primary_region = "ord"          # Chicago — closest to Dane County
     soft_limit = 200
     hard_limit = 400
 
+# /api/health reports process serviceability, NOT county freshness — a county
+# outage must not get this machine restarted or pulled from the load balancer
+# while it is still serving the last good numbers (already flagged stale in the
+# UI). Use /api/health?strict=1 for a freshness-sensitive probe or alert; do not
+# point this check at it.
 [[http_service.checks]]
   interval = "30s"
   timeout = "5s"

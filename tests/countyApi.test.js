@@ -125,8 +125,9 @@ test('fetchCountyResults groups flat precinct×candidate rows into units, unrepo
 
   assert.equal(result.reporting.reported, 1);
   assert.equal(result.reporting.total, 28);
-  // The county's timestamp has no zone marker; verified behaviour is to treat it as UTC.
-  assert.equal(result.countyUpdatedAt, '2026-08-11T21:14:03.000Z');
+  // The county's timestamp has no zone marker and is county-local, NOT UTC:
+  // 21:14:03 Central on Aug 11 is 02:14:03Z on Aug 12. See shared/countyTime.js.
+  assert.equal(result.countyUpdatedAt, '2026-08-12T02:14:03.000Z');
 });
 
 test('fetchCountyResults unions a candidate present in precinct rows but missing from the race summary', async (t) => {

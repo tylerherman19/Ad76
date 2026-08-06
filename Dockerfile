@@ -5,7 +5,12 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
+# shared/ is NOT optional: src/ imports it (src/geo/wards.js -> shared/wardIndex.js,
+# src/normalize.js -> shared/normalize.js, ...) and the server also serves it to the
+# browser at /shared. Omitting it makes the container exit immediately with
+# ERR_MODULE_NOT_FOUND.
 COPY src ./src
+COPY shared ./shared
 COPY public ./public
 COPY config ./config
 COPY scripts ./scripts

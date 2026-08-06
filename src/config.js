@@ -31,6 +31,12 @@ function deepMerge(base, override) {
 }
 
 const num = (v) => (v === undefined || v === '' ? undefined : Number(v));
+/**
+ * Present = "the operator set this", including "0". A truthiness test drops
+ * REPORTING_THRESHOLD=0 ("switch to the fast cadence immediately"), which is a
+ * setting someone may well reach for at 8pm.
+ */
+const has = (v) => v !== undefined && v !== '';
 
 /**
  * Env overrides. Every value that might need changing on election night is
@@ -39,20 +45,21 @@ const num = (v) => (v === undefined || v === '' ? undefined : Number(v));
  */
 function envOverrides(env) {
   const o = { election: {}, source: {}, polling: { retry: {} }, server: {}, margin: {} };
-  if (env.ELECTION_ID) o.election.electionId = env.ELECTION_ID;
-  if (env.RACE_NUMBER) o.election.raceNumber = env.RACE_NUMBER;
-  if (env.RACE_NAME_PATTERN) o.election.raceNamePattern = env.RACE_NAME_PATTERN;
-  if (env.SOURCE_MODE) o.source.mode = env.SOURCE_MODE;
-  if (env.HTML_BASE_URL) o.source.htmlBaseUrl = env.HTML_BASE_URL;
-  if (env.API_BASE_URL) o.source.apiBaseUrl = env.API_BASE_URL;
-  if (env.REQUEST_TIMEOUT_MS) o.source.requestTimeoutMs = num(env.REQUEST_TIMEOUT_MS);
-  if (env.IDLE_INTERVAL_MS) o.polling.idleIntervalMs = num(env.IDLE_INTERVAL_MS);
-  if (env.ACTIVE_INTERVAL_MS) o.polling.activeIntervalMs = num(env.ACTIVE_INTERVAL_MS);
-  if (env.REPORTING_THRESHOLD) o.polling.reportingThreshold = num(env.REPORTING_THRESHOLD);
-  if (env.FORCE_REFRESH_COOLDOWN_MS) o.polling.forceRefreshCooldownMs = num(env.FORCE_REFRESH_COOLDOWN_MS);
-  if (env.STALE_AFTER_MS) o.polling.staleAfterMs = num(env.STALE_AFTER_MS);
-  if (env.PORT) o.server.port = num(env.PORT);
-  if (env.HOST) o.server.host = env.HOST;
+  if (has(env.ELECTION_ID)) o.election.electionId = env.ELECTION_ID;
+  if (has(env.RACE_NUMBER)) o.election.raceNumber = env.RACE_NUMBER;
+  if (has(env.RACE_NAME_PATTERN)) o.election.raceNamePattern = env.RACE_NAME_PATTERN;
+  if (has(env.SOURCE_MODE)) o.source.mode = env.SOURCE_MODE;
+  if (has(env.HTML_BASE_URL)) o.source.htmlBaseUrl = env.HTML_BASE_URL;
+  if (has(env.API_BASE_URL)) o.source.apiBaseUrl = env.API_BASE_URL;
+  if (has(env.COUNTY_TIME_ZONE)) o.source.countyTimeZone = env.COUNTY_TIME_ZONE;
+  if (has(env.REQUEST_TIMEOUT_MS)) o.source.requestTimeoutMs = num(env.REQUEST_TIMEOUT_MS);
+  if (has(env.IDLE_INTERVAL_MS)) o.polling.idleIntervalMs = num(env.IDLE_INTERVAL_MS);
+  if (has(env.ACTIVE_INTERVAL_MS)) o.polling.activeIntervalMs = num(env.ACTIVE_INTERVAL_MS);
+  if (has(env.REPORTING_THRESHOLD)) o.polling.reportingThreshold = num(env.REPORTING_THRESHOLD);
+  if (has(env.FORCE_REFRESH_COOLDOWN_MS)) o.polling.forceRefreshCooldownMs = num(env.FORCE_REFRESH_COOLDOWN_MS);
+  if (has(env.STALE_AFTER_MS)) o.polling.staleAfterMs = num(env.STALE_AFTER_MS);
+  if (has(env.PORT)) o.server.port = num(env.PORT);
+  if (has(env.HOST)) o.server.host = env.HOST;
 
   // Drop empty branches so deepMerge does not overwrite with {}.
   for (const k of Object.keys(o)) {

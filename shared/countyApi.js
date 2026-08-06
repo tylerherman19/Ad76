@@ -8,9 +8,14 @@
  * CORS headers and additionally blocks datacenter IPs — it can only be read
  * server-side, via src/sources/html.js.
  *
- * Response shapes verified against election 168 / race 0031
- * (2024 Partisan Primary, DEM Representative to the Assembly District 76).
+ * Response shapes verified against election 168 / race 0031 (2024 Partisan
+ * Primary) and re-verified live against election 194 / race 0065 (2026 Partisan
+ * Primary, DEM Representative to the Assembly District 76): 28 reporting units,
+ * six ballot lines including "write-in:", PrecinctName padded with trailing
+ * spaces (hence the trim() on every field used as a key).
  */
+
+import { parseCountyTimestamp } from './countyTime.js';
 
 async function getJson(url, { timeoutMs = 20000, headers = {} } = {}) {
   const ctrl = new AbortController();
@@ -51,7 +56,7 @@ export async function findRaceNumber(baseUrl, electionId, raceNamePattern, opts)
   return hit ? { raceNumber: String(hit.RaceNumber), raceName: trim(hit.RaceName) } : null;
 }
 
-export async function fetchCountyResults({ baseUrl, electionId, raceNamePattern, raceNumber }, opts = {}) {
+export async function fetchCountyResults({ baseUrl, electionId, raceNamePattern, raceNumber, countyTimeZone }, opts = {}) {
   let resolvedRace = raceNumber ? { raceNumber: String(raceNumber), raceName: null } : null;
   if (!resolvedRace) {
     resolvedRace = await findRaceNumber(baseUrl, electionId, raceNamePattern, opts);
@@ -111,9 +116,9 @@ export async function fetchCountyResults({ baseUrl, electionId, raceNamePattern,
       typeof race.TotalPrecincts === 'number'
         ? { reported: race.PrecinctsReported ?? 0, total: race.TotalPrecincts }
         : null,
-    countyUpdatedAt: payload.Election?.LastPublished
-      ? new Date(`${payload.Election.LastPublished}Z`).toISOString()
-      : null,
+    // LastPublished has no zone marker and is county-local, not UTC. See
+    // shared/countyTime.js for the evidence and the conversion.
+    countyUpdatedAt: parseCountyTimestamp(payload.Election?.LastPublished, countyTimeZone),
     units: [...byPrecinct.values()],
   };
 }

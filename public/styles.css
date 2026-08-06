@@ -180,12 +180,21 @@ table.results thead th, tr.subtotal td.ward-name, .legend__scale-label,
 .sumrow { display: grid; grid-template-columns: minmax(8rem, 17rem) 1fr auto; gap: 0.75rem; align-items: center; }
 .sumrow__name { display: flex; align-items: center; gap: 0.45rem; font-size: 0.9375rem; font-weight: 600; min-width: 0; }
 .sumrow__name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sumrow__track { height: 14px; background: var(--bg-inset); }
-.sumrow__fill { height: 100%; width: 0%; transition: width 0.5s ease; }
+/* Both are <span>. Without an explicit display they are inline boxes, and
+   width/height on an inline box does nothing — the district-total bars computed
+   the right widths and colours and then drew nothing at all. The track only
+   escaped this because it is a grid item of .sumrow and got blockified; the fill
+   inside it is not, so it stayed 0px wide. */
+.sumrow__track { display: block; height: 14px; background: var(--bg-inset); }
+.sumrow__fill { display: block; height: 100%; width: 0%; transition: width 0.5s ease; }
 .sumrow__num { font-family: var(--mono); font-size: 0.875rem; color: var(--ink-mid); white-space: nowrap; }
 .sumrow__num b { color: var(--ink); font-weight: 700; }
 
-.chip { width: 11px; height: 11px; flex: 0 0 auto; border: 1px solid rgba(0,0,0,0.22); }
+/* inline-block, not the default inline: chips are <span>s carrying a candidate
+   colour as width/height, which an inline box ignores. They happen to render in
+   the flex contexts that blockify them, but must not depend on their parent's
+   display to be visible. */
+.chip { display: inline-block; width: 11px; height: 11px; flex: 0 0 auto; border: 1px solid rgba(0,0,0,0.22); }
 .scorecard__leader .chip { margin-top: 0.22em; }
 
 /* ------------------------------------------------- alder district scoreboard */
@@ -278,7 +287,7 @@ table.results thead th, tr.subtotal td.ward-name, .legend__scale-label,
 .legend__candidates { display: flex; flex-wrap: wrap; gap: 0.35rem 1.25rem; }
 .legend__item { display: flex; align-items: center; gap: 0.4rem; font-size: 0.875rem; }
 .legend__item--writein { color: var(--ink-mid); }
-.legend__swatch { width: 13px; height: 13px; flex: 0 0 auto; border: 1px solid rgba(0,0,0,0.22); }
+.legend__swatch { display: inline-block; width: 13px; height: 13px; flex: 0 0 auto; border: 1px solid rgba(0,0,0,0.22); }
 .legend__swatch--nodata { background: #d6d6d6; }
 .legend__scale { display: grid; gap: 0.25rem; min-width: 13rem; }
 .legend__scale-label { font-size: 0.625rem; color: var(--ink-light); }

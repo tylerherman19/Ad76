@@ -58,7 +58,9 @@ function expandWardSpec(spec) {
     }
     return null;
   }
-  return out.length ? [...new Set(out)] : null;
+  // Sorted, because displayWardLabel collapses consecutive runs and would
+  // render an out-of-order spec ("Wds 3,1-2") as three separate wards.
+  return out.length ? [...new Set(out)].sort((a, b) => a - b) : null;
 }
 
 /**

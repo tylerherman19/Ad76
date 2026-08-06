@@ -197,14 +197,21 @@ async function initMap() {
   map.attributionControl.setPrefix('');
   map.addAttribution?.('');
 
-  let geo;
-  try {
-    geo = await pipeline.wardsGeoJson();
-  } catch (err) {
-    els.map.innerHTML =
-      '<p style="padding:1.5rem;color:#9ba0a6;font-size:0.875rem">Ward boundaries could not be loaded. ' +
-      'Check that data/ad76-wards.geojson was published with the site.</p>';
-    return;
+  // The geometry is the whole page. A single transient failure here used to
+  // leave a permanently blank map until somebody reloaded the tab by hand —
+  // which is not something a viewer will do, and not something we can ask them
+  // to do at 21:30. Retry with backoff, indefinitely, and say what is happening.
+  let geo = null;
+  for (let attempt = 1; !geo; attempt++) {
+    try {
+      geo = await pipeline.wardsGeoJson();
+    } catch (err) {
+      const delay = Math.min(2000 * 2 ** (attempt - 1), 30000);
+      els.mapHint.textContent = `Ward boundaries could not be loaded (${err.message}). Retrying in ${Math.round(
+        delay / 1000,
+      )}s…`;
+      await new Promise((r) => setTimeout(r, delay));
+    }
   }
 
   wardLayer = L.geoJSON(geo, {
@@ -677,7 +684,11 @@ function tickCountdown() {
   if (state.refreshLockUntil && Date.now() > state.refreshLockUntil) {
     state.refreshLockUntil = 0;
     els.refreshBtn.disabled = false;
-    els.refreshHint.textContent = 'refreshes for everyone';
+    // Must match renderStatus(): in the static build this button only refreshes
+    // the clicking browser, and hardcoding "for everyone" here quietly undid the
+    // honest label a few seconds after every click.
+    els.refreshHint.textContent =
+      state.schedule?.sharedStateAvailable === false ? 'refreshes this browser' : 'refreshes for everyone';
   }
 }
 
@@ -689,9 +700,14 @@ function renderSummary() {
 
   const lead = p.summary.leader;
   if (!lead || p.summary.totalVotes === null) {
-    els.summaryLead.innerHTML = `<p class="summary__pending">${
-      p.awaitingResults ? 'Results have not been published yet.' : 'No wards have reported yet.'
-    }</p>`;
+    // Three genuinely different states, and calling the third one "no wards
+    // have reported" would contradict the ward counter right beside it.
+    const pending = p.awaitingResults
+      ? 'Results have not been published yet.'
+      : p.reporting.wardsReported > 0
+        ? `${p.reporting.wardsReported} of ${p.reporting.wardsTotal} wards reporting, no votes recorded in them yet.`
+        : 'No wards have reported yet.';
+    els.summaryLead.innerHTML = `<p class="summary__pending">${pending}</p>`;
   } else if (lead.tied) {
     els.summaryLead.innerHTML =
       `<div class="summary__leadline"><span class="summary__leadname">Tied</span>` +
@@ -1049,7 +1065,11 @@ els.tableWrap.addEventListener('keydown', (e) => {
   const row = e.target.closest('tr.wardrow');
   if (row && (e.key === 'Enter' || e.key === ' ')) {
     e.preventDefault();
-    selectUnit(row.dataset.unitId, { panMap: true });
+    // District-view rows carry a group key and no unit id. Routing them through
+    // selectUnit(undefined) cleared the selection instead of making it, so the
+    // table was unusable by keyboard in that view — mirror the click handler.
+    if (row.dataset.groupKey) selectGroup(row.dataset.groupKey);
+    else selectUnit(row.dataset.unitId, { panMap: true });
   }
 });
 
@@ -1192,8 +1212,13 @@ function scheduleNextPoll() {
 (async () => {
   pipeline = await createPipeline();
   document.body.dataset.mode = pipeline.mode;
-  await initMap();
-  restyleAll();
+
+  // Geometry and results are deliberately not sequenced. initMap() now retries
+  // the boundary fetch until it succeeds, so awaiting it would hold the summary,
+  // scoreboard and results table hostage to a slow or flapping geojson request.
+  // The map paints itself from state.payload whenever it does arrive.
+  initMap().then(restyleAll);
+
   await loadResults();
   setInterval(tickCountdown, 250);
 })();

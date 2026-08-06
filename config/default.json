@@ -1,11 +1,11 @@
 {
   "election": {
-    "//": "electionId is UNKNOWN until Dane County posts the Aug 11 2026 primary. Set it here or via ELECTION_ID env var. null = the backend reports 'election not yet published' instead of guessing.",
-    "electionId": null,
+    "//": "Dane County has published the Aug 11 2026 primary as election 194 ('2026 Partisan Primary', ElectionDate 2026-08-11). Verified live against /elections/precinctresults/194/0065: the AD76 DEM race exists with all 6 ballot lines and 28 reporting units covering all 30 AD76 wards. ELECTION_ID still overrides this. null = the backend reports 'election not yet published' instead of guessing.",
+    "electionId": "194",
     "electionDate": "2026-08-11",
     "electionLabel": "Democratic Primary — Assembly District 76",
 
-    "//raceMatch": "The race is found by matching this pattern against the county's race list, so the race number does not need to be known in advance. In 2024 the equivalent race was named 'DEM Representative to the Assembly District 76'.",
+    "//raceMatch": "The race is found by matching this pattern against the county's race list, so the race number does not need to be known in advance. Verified against election 194: the pattern resolves to race 0065, 'DEM Representative to the Assembly District 76' (note the county also lists REP/CON/LIB/GRN AD76 races, which the DEM prefix excludes). Set raceNumber to '0065' only if pattern discovery ever fails.",
     "raceNamePattern": "DEM\\s+Representative to the Assembly District\\s+76\\b",
     "raceNumber": null,
 
@@ -24,6 +24,8 @@
     "mode": "api",
     "htmlBaseUrl": "https://elections.danecounty.gov",
     "apiBaseUrl": "https://api.danecounty.gov/api/v1/elections",
+    "//countyTimeZone": "The county publishes 'LastPublished' / 'Results Last Updated' with no zone marker, in its own local time. Evidence: election 194 reports LastPublished 2026-08-03T07:53:39, which is 07:53 Central (a plausible morning publish) and 02:53 Central if read as UTC (not plausible). Both source paths convert with this zone, so api and html agree and the reading does not depend on the server's TZ.",
+    "countyTimeZone": "America/Chicago",
     "requestTimeoutMs": 20000,
     "userAgent": "AD76-results-map/1.0 (+ward-level results display; contact: repo owner)"
   },

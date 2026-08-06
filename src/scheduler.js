@@ -28,9 +28,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /**
  * Last-good-payload snapshot, written to disk after every successful fetch so
  * a process restart (crash, redeploy, host reboot) mid-election-night does not
- * blank the map for the gap before the next fetch succeeds. Loaded once at
- * startup and immediately treated as stale — it is never mistaken for a fresh
- * result, only shown until a real fetch replaces it.
+ * blank the map for the gap before the next fetch succeeds.
+ *
+ * The restored payload carries the ORIGINAL lastSuccessAt, not the restart
+ * time, so `isStale()` ages it exactly as if no restart had happened and the UI
+ * flags it the moment it passes staleAfterMs. It is shown until a real fetch
+ * replaces it, and never re-dated to look fresher than it is.
+ *
+ * The momentum history rides along in the same file: it is accumulated over the
+ * whole night and cannot be rebuilt from a single fetch, so a redeploy at 21:00
+ * would otherwise erase the entire sparkline.
  */
 const SNAPSHOT_FILE = path.join(ROOT, '.cache', 'last-payload.json');
 
@@ -45,10 +52,14 @@ function loadSnapshot() {
   }
 }
 
-function saveSnapshot(payload, lastSuccessAt) {
+function saveSnapshot(payload, lastSuccessAt, history) {
   try {
     fs.mkdirSync(path.dirname(SNAPSHOT_FILE), { recursive: true });
-    fs.writeFileSync(SNAPSHOT_FILE, JSON.stringify({ savedAt: new Date().toISOString(), lastSuccessAt, payload }));
+    const tmp = `${SNAPSHOT_FILE}.tmp`;
+    // Write-then-rename: a crash mid-write leaves the previous good snapshot
+    // intact rather than a truncated file that fails to parse on restart.
+    fs.writeFileSync(tmp, JSON.stringify({ savedAt: new Date().toISOString(), lastSuccessAt, history, payload }));
+    fs.renameSync(tmp, SNAPSHOT_FILE);
   } catch (err) {
     log.warn('scheduler.snapshot_save_failed', { message: err.message });
   }
@@ -131,7 +142,7 @@ async function attemptFetch(trigger) {
       state.successCount += 1;
       state.lastError = null;
       state.history = pushTrendPoint(state.history, trendPointFrom(state.payload, Date.now()), MAX_TREND_POINTS);
-      saveSnapshot(state.payload, state.lastSuccessAt);
+      saveSnapshot(state.payload, state.lastSuccessAt, state.history);
       log.info('scrape.success', {
         trigger,
         attempt,
@@ -210,7 +221,13 @@ export async function start() {
   if (snap) {
     state.payload = snap.payload;
     state.lastSuccessAt = snap.lastSuccessAt ?? snap.savedAt;
-    log.info('scheduler.snapshot_restored', { savedAt: snap.savedAt, lastSuccessAt: state.lastSuccessAt });
+    state.history = Array.isArray(snap.history) ? snap.history.slice(-MAX_TREND_POINTS) : [];
+    log.info('scheduler.snapshot_restored', {
+      savedAt: snap.savedAt,
+      lastSuccessAt: state.lastSuccessAt,
+      trendPoints: state.history.length,
+      ageMs: Date.now() - Date.parse(state.lastSuccessAt),
+    });
   }
 
   log.info('scheduler.start', {

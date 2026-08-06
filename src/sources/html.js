@@ -22,6 +22,7 @@
 import * as cheerio from 'cheerio';
 import config from '../config.js';
 import log from '../logger.js';
+import { parseCountyTimestamp } from '../../shared/countyTime.js';
 
 const norm = (s) => String(s ?? '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -69,20 +70,31 @@ async function fetchText(url, { timeoutMs, userAgent }) {
 function readTable($, table) {
   const $t = $(table);
   const rows = [];
+  const thCounts = [];
+  const cellCounts = [];
   $t.find('tr').each((_, tr) => {
-    const cells = $(tr)
-      .find('th,td')
-      .map((__, td) => norm($(td).text()))
-      .get();
-    if (cells.length) rows.push(cells);
+    const $cells = $(tr).find('th,td');
+    const cells = $cells.map((__, td) => norm($(td).text())).get();
+    if (!cells.length) return;
+    rows.push(cells);
+    thCounts.push($(tr).find('th').length);
+    cellCounts.push(cells.length);
   });
   if (!rows.length) return null;
 
-  // Header row = first row that is <th>-based, else the first row.
+  // Header row = the first row made up ENTIRELY of <th>, else row 0.
+  //
+  // "Entirely", not "contains a th": county CMS tables routinely mark the first
+  // cell of every data row as <th scope="row">, and a merely-contains test then
+  // walks the header pointer down into the body — losing the real header row and
+  // with it every candidate column, which made the whole table unusable.
   let headerIdx = 0;
-  $t.find('tr').each((i, tr) => {
-    if (headerIdx === 0 && $(tr).find('th').length) headerIdx = i;
-  });
+  for (let i = 0; i < rows.length; i++) {
+    if (thCounts[i] > 0 && thCounts[i] === cellCounts[i]) {
+      headerIdx = i;
+      break;
+    }
+  }
   return { headers: rows[headerIdx] ?? [], rows: rows.slice(headerIdx + 1) };
 }
 
@@ -107,13 +119,16 @@ const RE = {
  * This is the county's own timestamp and is deliberately kept separate from
  * our own fetch time — the UI shows both.
  */
-export function extractCountyTimestamp(html) {
+export function extractCountyTimestamp(html, timeZone = config.source.countyTimeZone) {
   const m = String(html).match(
     /Results?\s+Last\s+Updated\s*(?:On)?\s*:?\s*([0-9]{1,2}\/[0-9]{1,2}\/[0-9]{4}[^<\n]{0,20})/i,
   );
   if (!m) return null;
-  const d = new Date(norm(m[1]));
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  // The county prints its own local wall clock with no zone. Handing it to
+  // `new Date()` would read it in the *server's* zone — UTC in the container,
+  // Central on a laptop — so the same page produced different times depending
+  // on where the process ran, and disagreed with the JSON API path as well.
+  return parseCountyTimestamp(m[1], timeZone);
 }
 
 /** "12 of 28 precincts reporting" -> { reported: 12, total: 28 }. */
@@ -141,7 +156,11 @@ export function parseElectionPage(html, raceNamePattern) {
     const tableText = norm($(table).text());
     let heading = null;
     if (re.test(tableText)) {
-      heading = tableText;
+      // Keep only the matched race name, not the whole flattened table. The
+      // heading becomes `election.raceName` and is printed in the page header,
+      // so taking `tableText` wholesale put every candidate row and vote count
+      // into that line.
+      heading = norm(tableText.match(re)?.[0] ?? tableText);
     } else {
       const prev = $(table).prevAll('h1,h2,h3,h4,h5,caption,strong,p').filter((__, el) => re.test(norm($(el).text()))).first();
       if (prev.length) heading = norm(prev.text());
@@ -222,14 +241,37 @@ export function parsePrecinctPage(html, candidateNames) {
     if (precinctCol === -1) return;
 
     // Map each remaining header to a candidate by name match.
+    //
+    // Exact matches are bound first, across the whole header row, before any
+    // fuzzy containment is considered. Otherwise a loose header earlier in the
+    // row claims a candidate and the candidate's own column — sitting later in
+    // the row — is then skipped as already-taken, and that candidate's votes
+    // read as null from the wrong cell while the ward still counts as reported.
+    // Silently wrong numbers are the one outcome this file exists to prevent.
     const colFor = new Map();
-    parsed.headers.forEach((h, i) => {
-      if (i === precinctCol) return;
-      const hn = norm(h).toLowerCase();
+    const takenCols = new Set([precinctCol]);
+    const headerNames = parsed.headers.map((h) => norm(h).toLowerCase());
+
+    headerNames.forEach((hn, i) => {
+      if (takenCols.has(i) || !hn) return;
+      const exact = candidateNames.find((c) => hn === c.toLowerCase());
+      if (exact && !colFor.has(exact)) {
+        colFor.set(exact, i);
+        takenCols.add(i);
+      }
+    });
+
+    headerNames.forEach((hn, i) => {
+      // A blank header matches nothing. `"name".includes("")` is always true,
+      // so without this guard an empty column binds to the first candidate.
+      if (takenCols.has(i) || hn.length < 3) return;
       const match = candidateNames.find(
-        (c) => hn === c.toLowerCase() || hn.includes(c.toLowerCase()) || c.toLowerCase().includes(hn),
+        (c) => !colFor.has(c) && (hn.includes(c.toLowerCase()) || c.toLowerCase().includes(hn)),
       );
-      if (match && !colFor.has(match)) colFor.set(match, i);
+      if (match) {
+        colFor.set(match, i);
+        takenCols.add(i);
+      }
     });
     if (colFor.size === 0) return;
     if (best && colFor.size <= best.colFor.size) return;

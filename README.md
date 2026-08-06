@@ -281,10 +281,11 @@ win over both. Nothing below requires a code change.
 
 | Key | Env | Default | Notes |
 | --- | --- | --- | --- |
-| `election.electionId` | `ELECTION_ID` | `null` | **Set this when the county posts the primary.** `null` = render the pre-election state rather than guess an id. |
+| `election.electionId` | `ELECTION_ID` | `"194"` | Dane County's **2026 Partisan Primary** (ElectionDate 2026-08-11). Verified live: the AD76 DEM race resolves to race `0065`, 28 reporting units covering all 30 AD76 wards. Set to `null` to force the pre-election state. |
 | `election.raceNamePattern` | `RACE_NAME_PATTERN` | `DEM\s+Representative to the Assembly District\s+76\b` | The race is found by matching this against the county's race list, so the race number does not need to be known ahead of time. |
-| `election.raceNumber` | `RACE_NUMBER` | `null` | Optional override if pattern matching fails. |
-| `election.expectedCandidates` | — | 5 names | Used **only** before the county publishes the race, so the legend and table show real structure. Replaced entirely by the county's list on the first successful scrape. Never used as vote data. |
+| `election.raceNumber` | `RACE_NUMBER` | `null` | Optional override if pattern matching fails. For election 194 the value would be `0065`. |
+| `election.expectedCandidates` | — | 5 names | Used **only** before the county publishes the race, so the legend and table show real structure. Replaced entirely by the county's list on the first successful scrape. Never used as vote data. The county spells the third name `Tony Castaneda`, without the tilde. |
+| `source.countyTimeZone` | `COUNTY_TIME_ZONE` | `America/Chicago` | Zone the county's unmarked "last updated" timestamps are published in. Both source paths convert with this, so the reading does not depend on the server's `TZ`. |
 
 ### Polling and refresh
 

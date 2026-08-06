@@ -71,6 +71,7 @@ const runtimeConfig = {
   source: {
     apiBaseUrl: config.source.apiBaseUrl,
     requestTimeoutMs: config.source.requestTimeoutMs,
+    countyTimeZone: config.source.countyTimeZone,
   },
   polling: config.polling,
   candidates: config.candidates,

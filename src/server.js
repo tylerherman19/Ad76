@@ -91,9 +91,28 @@ app.get('/api/health', (req, res) => {
     /* reported via matching below */
   }
 
-  const healthy = Boolean(s.lastSuccessAt) && !isStale() && s.consecutiveFailures === 0;
-  res.status(healthy ? 200 : 503).json({
-    status: healthy ? 'ok' : s.lastSuccessAt ? 'degraded' : 'starting',
+  const fresh = Boolean(s.lastSuccessAt) && !isStale() && s.consecutiveFailures === 0;
+  const status = fresh ? 'ok' : s.lastSuccessAt ? 'degraded' : 'starting';
+
+  // The HTTP status reports whether THIS PROCESS can serve, not whether the
+  // county is currently answering. Fly and Render both restart / de-pool a
+  // machine whose health check fails, and this endpoint is wired to both. A
+  // county-side outage longer than staleAfterMs would otherwise take the map
+  // down at exactly the moment it matters — while the process is fine, still
+  // serving the last good numbers, and already flagging them stale in the UI.
+  // Restarting also throws away the in-memory trend history and does nothing to
+  // bring the county back.
+  //
+  // 503 is reserved for "cannot serve a page at all": no payload has ever been
+  // built. `?strict=1` restores the freshness-sensitive status for a human or
+  // an alerting probe that genuinely wants it.
+  const strict = req.query.strict === '1';
+  const serviceable = Boolean(payload);
+  res.status(strict ? (fresh ? 200 : 503) : serviceable ? 200 : 503).json({
+    status,
+    fresh,
+    serviceable,
+    stale: isStale(),
     schedule: scheduleInfo(),
     election: {
       electionId: config.election.electionId,

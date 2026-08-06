@@ -51,6 +51,12 @@ test('handles comma-separated and mixed ward specs', () => {
   assert.deepEqual(parsePrecinctName('C Madison Wds 1-3,7').wards, [1, 2, 3, 7]);
 });
 
+test('out-of-order ward specs are sorted so the label collapses runs correctly', () => {
+  const p = parsePrecinctName('C Madison Wds 3,1-2');
+  assert.deepEqual(p.wards, [1, 2, 3]);
+  assert.equal(displayWardLabel(p), 'Madison Wards 1–3');
+});
+
 test('reports unparseable labels instead of guessing', () => {
   const p = parsePrecinctName('Somewhere Else Entirely');
   assert.equal(p.ok, false);
@@ -86,6 +92,70 @@ test('extractCountyTimestamp reads the county-reported update time', () => {
   const iso = extractCountyTimestamp('<p>Results Last Updated On 8/11/2026 9:14:03 PM</p>');
   assert.ok(iso, 'expected a timestamp');
   assert.equal(new Date(iso).getFullYear(), 2026);
+  // Read in the county's zone, so this path agrees with the JSON API path
+  // instead of drifting with the server's TZ. 9:14:03 PM CDT -> 02:14:03Z.
+  assert.equal(iso, '2026-08-12T02:14:03.000Z');
+});
+
+// ---------------------------------------------------------------------------
+// Table-shape hazards. Each of these silently produced wrong numbers or a total
+// scrape failure against markup the county CMS can plausibly emit.
+// ---------------------------------------------------------------------------
+
+test('a blank header column never steals a candidate’s votes', () => {
+  // `"isaia ben-ami".includes("")` is true, so an empty header used to bind to
+  // the first candidate — whose real column was then skipped as already-taken,
+  // leaving their votes null while the ward still counted as reported.
+  const names = ['Isaia Ben-Ami', 'Juliana Bennett', 'Zoe Sullivan'];
+  const html = `<table>
+    <tr><th>Precinct</th><th></th><th>Isaia Ben-Ami</th><th>Juliana Bennett</th><th>Zoe Sullivan</th></tr>
+    <tr><td>C Madison Wd 016</td><td>&nbsp;</td><td>40</td><td>120</td><td>25</td></tr>
+  </table>`;
+  const [unit] = parsePrecinctPage(html, names);
+  assert.deepEqual(unit.votes, { 'Isaia Ben-Ami': 40, 'Juliana Bennett': 120, 'Zoe Sullivan': 25 });
+});
+
+test('an exactly-named column wins over a looser one earlier in the row', () => {
+  const names = ['Zoe Sullivan'];
+  const html = `<table>
+    <tr><th>Precinct</th><th>Total Votes</th><th>Zoe Sullivan</th></tr>
+    <tr><td>C Madison Wd 016</td><td>999</td><td>25</td></tr>
+  </table>`;
+  const [unit] = parsePrecinctPage(html, names);
+  assert.equal(unit.votes['Zoe Sullivan'], 25, 'must not read the running total column');
+});
+
+test('row-header <th> cells do not swallow the real header row', () => {
+  // CMS tables often mark the first cell of each data row as <th scope="row">.
+  // The header scan used to walk down into the body on those, losing every
+  // candidate column and failing the whole table.
+  const names = ['Isaia Ben-Ami', 'Zoe Sullivan'];
+  const html = `<table>
+    <tr><th>Precinct</th><th>Isaia Ben-Ami</th><th>Zoe Sullivan</th></tr>
+    <tr><th>C Madison Wd 016</th><td>40</td><td>25</td></tr>
+    <tr><th>C Madison Wd 017</th><td>10</td><td>50</td></tr>
+  </table>`;
+  const units = parsePrecinctPage(html, names);
+  assert.equal(units.length, 2);
+  assert.deepEqual(units.map((u) => u.precinctName), ['C Madison Wd 016', 'C Madison Wd 017']);
+  assert.equal(units[0].votes['Isaia Ben-Ami'], 40);
+});
+
+test('raceName is the race, not the whole flattened table', () => {
+  // The heading is rendered in the page header; taking the table's full text
+  // put every candidate row and vote count into that line.
+  const html = `<html><body><div>
+    <table>
+      <tr><td colspan="3">DEM Representative to the Assembly District 76 — 0 of 28 precincts reporting</td></tr>
+      <tr><th>Candidate</th><th>Votes</th><th>Percent</th></tr>
+      <tr><td>Zoe Sullivan</td><td>5</td><td>100</td></tr>
+    </table>
+    <a href="/Precincts-Result/194/0065">Votes By Precinct</a>
+  </div></body></html>`;
+  const race = parseElectionPage(html, 'DEM\\s+Representative to the Assembly District\\s+76\\b');
+  assert.equal(race.raceName, 'DEM Representative to the Assembly District 76');
+  assert.equal(race.raceId, '0065');
+  assert.deepEqual(race.reporting, { reported: 0, total: 28 });
 });
 
 // ---------------------------------------------------------------------------
