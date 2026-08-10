@@ -14,14 +14,17 @@ import { start, stop, forceRefresh, getPayload, getState, scheduleInfo, isStale,
  * the map on screen; the alternative (crash) is strictly worse for a live
  * results page than a logged, survived error.
  */
+// Stack traces go to the process's own stderr (host logs) only, never into the
+// ring buffer /api/logs serves — that endpoint is public and unauthenticated,
+// and a stack trace can reveal internal file paths that are not meant to be.
 process.on('uncaughtException', (err) => {
-  log.error('process.uncaught_exception', { message: err.message, stack: err.stack });
+  console.error(err.stack ?? err.message);
+  log.error('process.uncaught_exception', { message: err.message });
 });
 process.on('unhandledRejection', (reason) => {
-  log.error('process.unhandled_rejection', {
-    message: reason instanceof Error ? reason.message : String(reason),
-    stack: reason instanceof Error ? reason.stack : undefined,
-  });
+  const err = reason instanceof Error ? reason : new Error(String(reason));
+  console.error(err.stack ?? err.message);
+  log.error('process.unhandled_rejection', { message: err.message });
 });
 
 const app = express();

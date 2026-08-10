@@ -11,12 +11,26 @@
  * matching survives a column being added or reordered, and anything that cannot
  * be located is reported as a failure instead of being guessed at.
  *
- * VERIFICATION STATUS: see README, "Data source reality check". This parser was
- * written against the documented page structure and is exercised by fixtures in
- * fixtures/, but elections.danecounty.gov sits behind a Cloudflare rule that
- * refuses datacenter IPs, so it could not be run against the live HTML from the
- * build environment. `npm run verify:source` fetches the live pages from a
- * normal network, saves the HTML, and prints exactly what the parser extracted.
+ * VERIFICATION STATUS: see README, "Data source reality check". elections.danecounty.gov
+ * itself sits behind a Cloudflare rule that refuses datacenter IPs. The county's live
+ * site currently also answers at elections.countyofdane.com (not blocked from every
+ * network), which made it possible to run this parser against real live markup for
+ * election 194 / race 0065 (2026 Partisan Primary, DEM AD76):
+ *
+ *   - /Election-Result parses correctly (as of this check). The race heading and its
+ *     results table are NOT direct siblings in the real markup — they are separate
+ *     descendants of a shared wrapping <div>, one per race — and the "Number of Votes"
+ *     header does not match a `/^votes?$/`-style column pattern. Both are handled below.
+ *   - /Precincts-Result does NOT parse, and cannot with this approach: the live page
+ *     ships an empty <table><thead id="thCandidate"></thead><tbody id="tbCandidate">
+ *     </tbody></table> — the per-ward numbers are filled in by the county's own
+ *     JavaScript after load, not present in the HTML response this module fetches.
+ *     `fetchHtmlResults` (and therefore SOURCE_MODE=html / auto's fallback) cannot
+ *     get ward-level results this way. This is not a parser bug to patch; getting this
+ *     data would mean reverse-engineering the county's client-side data call or running
+ *     a real browser — both larger than this module's scope, and the former would just
+ *     reimplement api.js, which already works and is the default. Treat SOURCE_MODE=html
+ *     as non-functional for ward-level results until this is revisited.
  */
 
 import * as cheerio from 'cheerio';
@@ -109,7 +123,12 @@ function findCol(headers, patterns) {
 
 const RE = {
   candidate: [/^candidate/i, /^name$/i, /^choice/i],
-  votes: [/^votes?$/i, /total votes/i, /^vote total/i],
+  // "Number of Votes" is the current county page's actual header text — a
+  // vote-count column with "vote" nowhere near the front, so it needs its own
+  // pattern rather than falling out of a `/^votes?$/`-style anchor. It must
+  // stay distinct from `percent` below: "Vote Percentage" also contains
+  // "vote" and would otherwise be claimed as the votes column instead.
+  votes: [/^votes?$/i, /total votes/i, /^vote total/i, /number of votes/i],
   percent: [/^%$/, /percent/i, /^pct/i],
   precinct: [/^precinct/i, /^ward/i, /^reporting unit/i, /^municipality/i],
 };
@@ -131,9 +150,16 @@ export function extractCountyTimestamp(html, timeZone = config.source.countyTime
   return parseCountyTimestamp(m[1], timeZone);
 }
 
-/** "12 of 28 precincts reporting" -> { reported: 12, total: 28 }. */
+/**
+ * "12 of 28 precincts reporting" -> { reported: 12, total: 28 }.
+ * Also matches the current county page phrasing, "0.0% of Precincts
+ * Reporting (0 of 28)" — the number pair sits in parens after the word,
+ * not immediately before it.
+ */
 export function extractReporting(text) {
-  const m = String(text).match(/(\d+)\s+of\s+(\d+)\s+(?:precinct|ward|reporting unit)/i);
+  const t = String(text);
+  const m = t.match(/(\d+)\s+of\s+(\d+)\s+(?:precinct|ward|reporting unit)/i) ??
+    t.match(/precincts?\s+reporting\s*\(\s*(\d+)\s+of\s+(\d+)\s*\)/i);
   if (!m) return null;
   return { reported: Number(m[1]), total: Number(m[2]) };
 }
@@ -147,23 +173,55 @@ export function parseElectionPage(html, raceNamePattern) {
   const re = new RegExp(raceNamePattern, 'i');
   const pageText = norm($.root().text());
 
+  // Real county markup nests each race's heading and its results table as
+  // separate descendants of a shared wrapping <div> (one row per race), not as
+  // direct siblings — so a `prevAll` sibling search finds nothing, and naively
+  // climbing ancestors and searching *down* from there over-matches: once the
+  // climb reaches a container wide enough to hold several races' rows, its
+  // heading bleeds onto every table inside it, not just its own.
+  //
+  // A single pass over headings and tables in document order sidesteps both
+  // problems: races render sequentially and fully self-contained (heading,
+  // then its table, then the next race's heading), so "the most recent
+  // matching heading seen so far" is always this table's own — with no
+  // ancestor-walking and no risk of grabbing a neighbouring race's heading.
+  // 'p' is deliberately not in this list: the reporting-count line ("0 of 28
+  // precincts reporting") is itself a <p>, and tracking it as a heading
+  // candidate would overwrite the real heading with body text before the
+  // table is ever reached.
+  let lastHeading = null;
   let found = null;
-  $('table').each((_, table) => {
+  $('h1,h2,h3,h4,h5,caption,strong,table').each((_, el) => {
     if (found) return;
+    if (el.tagName?.toLowerCase() !== 'table') {
+      lastHeading = norm($(el).text());
+      return;
+    }
+    const table = el;
 
-    // The race name sits either in the table's own caption/first row, or in a
-    // heading somewhere before the table.
+    // The race name sits either in the table's own caption/first row, or in
+    // the most recently seen heading (a direct previous sibling in the simple
+    // page shape the tests pin; further out, but still the closest preceding
+    // match in reading order, in the real county markup).
     const tableText = norm($(table).text());
     let heading = null;
+    // Reporting counts ("N of M precincts") live outside the table itself —
+    // in the simple/test-fixture shape that's the whole page; in the real
+    // county markup it's a footer scoped to this race's own wrapping element,
+    // two levels up (table -> column -> row). Narrowed below when that shape
+    // is the one in play, so a multi-race page can't bleed a neighbouring
+    // race's count into this one.
+    let reportingScope = $(table);
     if (re.test(tableText)) {
       // Keep only the matched race name, not the whole flattened table. The
       // heading becomes `election.raceName` and is printed in the page header,
       // so taking `tableText` wholesale put every candidate row and vote count
       // into that line.
       heading = norm(tableText.match(re)?.[0] ?? tableText);
-    } else {
-      const prev = $(table).prevAll('h1,h2,h3,h4,h5,caption,strong,p').filter((__, el) => re.test(norm($(el).text()))).first();
-      if (prev.length) heading = norm(prev.text());
+    } else if (lastHeading && re.test(lastHeading)) {
+      heading = lastHeading;
+      const climbed = $(table).parent().parent();
+      if (climbed.length) reportingScope = climbed;
     }
     if (!heading) return;
 
@@ -213,7 +271,7 @@ export function parseElectionPage(html, raceNamePattern) {
       raceName: heading,
       raceId,
       candidates,
-      reporting: extractReporting(tableText) ?? extractReporting(pageText),
+      reporting: extractReporting(norm(reportingScope.text())) ?? extractReporting(tableText) ?? extractReporting(pageText),
     };
   });
 
