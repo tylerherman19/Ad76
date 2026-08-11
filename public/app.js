@@ -78,6 +78,7 @@ const state = {
   pollTimer: null,
   refreshLockUntil: 0,
   soundEnabled: localStorage.getItem('ad76-sound') === '1',
+  rowDiffs: new Map(), // unitId -> 'new' | 'corrected', since the last fetch
 };
 
 /* --------------------------------------------------------------- helpers */
@@ -528,7 +529,7 @@ function playAlertSound() {
 }
 
 let toastSeq = 0;
-function pushToast(text, kind = 'leader') {
+function pushToast(text, kind = 'leader', durationMs = 8000) {
   const el = document.createElement('div');
   el.className = `toast toast--${kind}`;
   el.id = `toast-${++toastSeq}`;
@@ -538,7 +539,22 @@ function pushToast(text, kind = 'leader') {
   setTimeout(() => {
     el.classList.add('is-leaving');
     setTimeout(() => el.remove(), 400);
-  }, 8000);
+  }, durationMs);
+}
+
+/**
+ * Fires when the *county* posts new numbers (source.countyUpdatedAt moves),
+ * distinct from checkMilestones below which fires on results derived from
+ * that data (a lead flip, a district finishing). This can fire with no
+ * milestone crossed — e.g. the county nudges vote counts without changing
+ * who's leading — and visitors should still see that fresh data landed.
+ */
+function checkCountyUpdate(prev, next) {
+  if (!prev || !next) return;
+  const prevAt = prev.source?.countyUpdatedAt;
+  const nextAt = next.source?.countyUpdatedAt;
+  if (!nextAt || prevAt === nextAt) return;
+  pushToast(`Dane County posted new results — ${fmtClock(nextAt)}`, 'county-update', 15000);
 }
 
 /**
@@ -799,7 +815,9 @@ function renderGroupDesktop(group, candidates) {
       const cells = u.reported
         ? voteCells(u.candidates, candidates)
         : `<td class="notreporting" colspan="${candidates.length * 2}">Not yet reporting</td>`;
-      return `<tr class="wardrow ${u.reported ? '' : 'is-unreported'}" data-unit-id="${escapeHtml(u.id)}" tabindex="0">
+      const diff = state.rowDiffs?.get(u.id);
+      const diffClass = diff ? ` diff-${diff}` : '';
+      return `<tr class="wardrow ${u.reported ? '' : 'is-unreported'}${diffClass}" data-unit-id="${escapeHtml(u.id)}" tabindex="0">
         <td class="ward-name">${escapeHtml(u.label)}</td>${cells}
         <td class="num">${u.reported ? fmtInt(u.totalVotes) : '—'}</td>
       </tr>`;
@@ -851,7 +869,9 @@ function renderGroupMobile(group, candidates) {
             .join('')}</ul>`
         : `<p class="cardrow__lead">This ward has not reported. No votes have been published for it.</p>`;
 
-      return `<li class="cardrow" data-unit-id="${escapeHtml(u.id)}" data-open="${open}">
+      const diff = state.rowDiffs?.get(u.id);
+      const diffClass = diff ? ` diff-${diff}` : '';
+      return `<li class="cardrow${diffClass}" data-unit-id="${escapeHtml(u.id)}" data-open="${open}">
         <button class="cardrow__head" type="button" data-card-toggle="${escapeHtml(u.id)}" aria-expanded="${open}">${head}</button>
         <div class="cardrow__detail">${detail}</div>
       </li>`;
@@ -1160,12 +1180,35 @@ function applySchedule(schedule) {
   if (schedule.serverTime) state.clockSkewMs = new Date(schedule.serverTime).getTime() - Date.now();
 }
 
+/**
+ * Per-ward diff since the last fetch: which rows just started reporting or
+ * changed their vote total, so the table can flash them instead of leaving
+ * visitors to spot a changed number in a wall of digits themselves. A drop
+ * in total votes is flagged distinctly ('corrected') since on election night
+ * that means the county revised a number down, not routine new data.
+ */
+function computeRowDiffs(prev, next) {
+  const diffs = new Map();
+  if (!prev) return diffs;
+  const prevById = new Map(prev.units.map((u) => [u.id, u]));
+  for (const u of next.units) {
+    const before = prevById.get(u.id);
+    if (!before) continue;
+    if (!before.reported && u.reported) diffs.set(u.id, 'new');
+    else if (before.reported && u.reported && before.totalVotes !== u.totalVotes) {
+      diffs.set(u.id, u.totalVotes > before.totalVotes ? 'new' : 'corrected');
+    }
+  }
+  return diffs;
+}
+
 async function loadResults() {
   const prevPayload = state.payload;
   try {
     const payload = await pipeline.results();
     state.payload = payload;
     state.display = payload.display ?? state.display;
+    state.rowDiffs = computeRowDiffs(prevPayload, payload);
     applySchedule(payload.schedule);
 
     if (state.openGroups === null) state.openGroups = new Set(isNarrow() ? [] : payload.groups.map((g) => g.key));
@@ -1179,6 +1222,7 @@ async function loadResults() {
     restyleAll();
     renderDetail();
     checkMilestones(prevPayload, payload);
+    checkCountyUpdate(prevPayload, payload);
   } catch (err) {
     // Leave the last good render in place; the stale badge covers the gap.
     applySchedule(err.schedule);

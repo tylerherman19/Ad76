@@ -20,6 +20,7 @@
   --ink-mid:      #5c5c5c;
   --ink-light:    #8a8a8a;
   --alert:        #d55e00;   /* vermillion, from the same colourblind-safe palette */
+  --new:          #009E73;   /* bluish green, same palette — fresh/added data */
 
   --sans: ui-sans-serif, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
@@ -153,6 +154,7 @@ table.results thead th, tr.subtotal td.ward-name, .legend__scale-label,
 }
 .toast--leader { border-left-color: var(--alert); }
 .toast--district { border-left-color: #56B4E9; }
+.toast--county-update { border-left-color: var(--new); }
 .toast.is-leaving { opacity: 0; transition: opacity 0.35s ease; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 
@@ -347,6 +349,16 @@ tr.wardrow .pct { color: var(--ink-light); font-size: 0.75rem; }
 tr.wardrow.is-unreported td { color: var(--ink-light); }
 .notreporting { font-size: 0.625rem; color: var(--ink-light); }
 
+/* Rows whose numbers moved since the last fetch — a quiet flash so a change
+   doesn't require re-scanning the whole table to spot. Settles to a steady
+   tint until the next poll's diff supersedes or clears it. */
+tr.wardrow.diff-new, tr.wardrow.diff-new:nth-child(even) { background: rgba(0, 158, 115, 0.1); animation: diff-flash-new 1.6s ease; }
+tr.wardrow.diff-new td.ward-name { color: var(--new); }
+tr.wardrow.diff-corrected, tr.wardrow.diff-corrected:nth-child(even) { background: rgba(213, 94, 0, 0.1); animation: diff-flash-corrected 1.6s ease; }
+tr.wardrow.diff-corrected td.ward-name { color: var(--alert); }
+@keyframes diff-flash-new { from { background: rgba(0, 158, 115, 0.4); } }
+@keyframes diff-flash-corrected { from { background: rgba(213, 94, 0, 0.4); } }
+
 tr.subtotal td { border-top: 1px solid var(--rule-strong); font-weight: 800; font-size: 0.8125rem; padding-top: 0.5rem; background: var(--bg); }
 tr.subtotal td.ward-name { font-size: 0.625rem; color: var(--ink-mid); font-weight: 500; }
 
@@ -390,6 +402,10 @@ tr.subtotal td.ward-name { font-size: 0.625rem; color: var(--ink-mid); font-weig
   .cardrow { border-bottom: 1px solid var(--rule); }
   .cardrow:nth-child(even) { background: var(--bg-alt); }
   .cardrow.is-linked { background: #e4ebf2; box-shadow: inset 3px 0 0 0 var(--ink); }
+  .cardrow.diff-new { background: rgba(0, 158, 115, 0.1); animation: diff-flash-new 1.6s ease; }
+  .cardrow.diff-new .cardrow__ward { color: var(--new); }
+  .cardrow.diff-corrected { background: rgba(213, 94, 0, 0.1); animation: diff-flash-corrected 1.6s ease; }
+  .cardrow.diff-corrected .cardrow__ward { color: var(--alert); }
   .cardrow__head {
     width: 100%; background: none; border: none; cursor: pointer; text-align: left;
     display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 0.5rem;
