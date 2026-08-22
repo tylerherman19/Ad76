@@ -1,0 +1,16 @@
+/* ThreeUI-inspired ambient surface: restrained glow, depth, and responsive motion. */
+:root { --ui-ink: #17212b; --ui-paper: rgba(255,255,255,.84); --ui-line: rgba(23,33,43,.12); }
+body { background: #eef2f5; position: relative; isolation: isolate; }
+body::before { content: ""; position: fixed; inset: -20%; z-index: -1; pointer-events: none; background: radial-gradient(circle at 12% 8%, rgba(62,122,170,.16), transparent 30%), radial-gradient(circle at 88% 14%, rgba(209,126,80,.13), transparent 27%), radial-gradient(circle at 52% 100%, rgba(71,135,112,.12), transparent 34%); filter: blur(34px); animation: ui-drift 18s ease-in-out infinite alternate; }
+.masthead, .statusbar, .summary, .scoreboard, .mapsection, .tablesection { position: relative; }
+.summary__inner, .mapwrap, .tablewrap, .scoreboard__grid { border: 1px solid var(--ui-line); background: var(--ui-paper); box-shadow: 0 18px 55px rgba(23,33,43,.08), 0 2px 8px rgba(23,33,43,.04); backdrop-filter: blur(16px); }
+.summary__inner { border-radius: 22px; padding: clamp(1.2rem, 3vw, 2.25rem); }
+.mapwrap, .tablewrap { border-radius: 18px; overflow: hidden; }
+.scoreboard__grid { border-radius: 18px; padding: .45rem; }
+.stat, .summary__bars > li, .scorecard, .wardrow { transition: transform .2s ease, box-shadow .2s ease, background .2s ease; }
+.stat:hover, .scorecard:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(23,33,43,.09); }
+.statusbar::after { content: ""; position: absolute; left: 0; top: 0; height: 2px; width: 100%; background: linear-gradient(90deg, #4e91bd, #d07b58, #4b9b7a, #4e91bd); background-size: 300% 100%; animation: ui-flow 7s linear infinite; opacity: .8; }
+#last-fetch:not(:empty)::before { content: ""; display: inline-block; width: .48rem; height: .48rem; margin: 0 .4rem .08rem 0; border-radius: 50%; background: #4b9b7a; box-shadow: 0 0 0 4px rgba(75,155,122,.14); }
+@keyframes ui-drift { to { transform: translate3d(2%, -1%, 0) scale(1.04); } }
+@keyframes ui-flow { to { background-position: 300% 0; } }
+@media (prefers-reduced-motion: reduce) { body::before, .statusbar::after { animation: none; } *, *::before, *::after { transition-duration: .01ms !important; } }
