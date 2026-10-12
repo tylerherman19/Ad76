@@ -561,3 +561,23 @@ data/ad76-wards.geojson   committed ward boundaries
   from the county's own attribute rather than a hand-maintained lookup.
 - **District boundary check** — LTSB `WI Assembly Districts (2024)`, used to confirm
   AD76 does not cross county lines.
+
+## Mobile dashboard and update times
+
+Phones up to 600px wide show candidate totals first, a compact reporting/status grid,
+and a sticky Map / Districts / Wards navigation bar. Ward results use expandable
+cards; controls have at least 44px touch targets. A vector 76 favicon uses the
+same blue/red candidate colors. Alert controls use plain text, without emojis.
+
+The two update times are deliberately different:
+
+- **County results updated** is the county-wide `LastPublished` value supplied by
+  Dane County, converted to Central time.
+- **AD76 results updated** tracks changes in AD76 votes and reporting status.
+  The API does not supply a district-specific publication timestamp. This is
+  when the dashboard observed the change, explicitly labeled as such. Its
+  first read says “First results seen”; unchanged polls and other races updating
+  do not advance it. Static hosting tracks observations per page session;
+  the Node server preserves its observation clock in its results snapshot.
+
+Before any ward reports, the district clock says “Awaiting results”.

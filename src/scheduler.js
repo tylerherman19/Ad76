@@ -15,6 +15,7 @@
  * out of the loop and never blocks the following cycle.
  */
 
+import { trackDistrictUpdate } from '../shared/districtUpdate.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import config, { ROOT } from './config.js';
@@ -130,7 +131,7 @@ async function attemptFetch(trigger) {
         raceNamePattern: config.election.raceNamePattern,
         raceNumber: config.election.raceNumber,
       });
-      state.payload = buildPayload(raw);
+      state.payload = trackDistrictUpdate(buildPayload(raw), state.payload);
       state.lastSuccessAt = new Date().toISOString();
       state.consecutiveFailures = 0;
       state.successCount += 1;

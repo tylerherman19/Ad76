@@ -27,7 +27,8 @@ const els = {
   reportingFill: document.getElementById('reporting-fill'),
   countdown: document.getElementById('countdown'),
   countdownSub: document.getElementById('countdown-sub'),
-  lastFetch: document.getElementById('last-fetch'),
+  districtUpdated: document.getElementById('district-updated'),
+  districtUpdatedNote: document.getElementById('district-updated-note'),
   countyUpdated: document.getElementById('county-updated'),
   staleBadge: document.getElementById('stale-badge'),
   refreshBtn: document.getElementById('refresh-btn'),
@@ -592,14 +593,14 @@ els.soundToggle.addEventListener('click', () => {
   state.soundEnabled = !state.soundEnabled;
   localStorage.setItem('ad76-sound', state.soundEnabled ? '1' : '0');
   els.soundToggle.setAttribute('aria-pressed', String(state.soundEnabled));
-  els.soundToggleLabel.textContent = state.soundEnabled ? '🔔 Alerts on' : '🔕 Alerts muted';
+  els.soundToggleLabel.textContent = state.soundEnabled ? 'Alerts on' : 'Alerts muted';
   if (state.soundEnabled) {
     ensureAudioCtx();
     playAlertSound();
   }
 });
 els.soundToggle.setAttribute('aria-pressed', String(state.soundEnabled));
-els.soundToggleLabel.textContent = state.soundEnabled ? '🔔 Alerts on' : '🔕 Alerts muted';
+els.soundToggleLabel.textContent = state.soundEnabled ? 'Alerts on' : 'Alerts muted';
 if (state.soundEnabled) ensureAudioCtx();
 
 /* --------------------------------------------------------------- status */
@@ -614,14 +615,13 @@ function renderStatus() {
   const pctReporting = r.wardsTotal ? (r.wardsReported / r.wardsTotal) * 100 : 0;
   els.reportingFill.style.width = `${pctReporting}%`;
 
-  els.lastFetch.textContent = s.lastSuccessAt ? `${fmtClock(s.lastSuccessAt)} (${fmtAgo(s.lastSuccessAt)})` : 'not yet';
+  const districtAt = p.source.districtUpdatedAt;
+  els.districtUpdated.textContent = districtAt ? fmtClock(districtAt) : 'Awaiting results';
+  const observer = s.sharedStateAvailable === false ? 'this page' : 'the dashboard';
+  els.districtUpdatedNote.textContent = districtAt
+    ? `${p.source.districtUpdateKind === 'first-observed' ? 'First results seen' : 'Change observed'} by ${observer} · Central time`
+    : 'Last change observed · Central time';
 
-  // There is no backend in the static build, so do not call it one.
-  const staticMode = s.sharedStateAvailable === false;
-  document.querySelector('#last-fetch').previousElementSibling.textContent =
-    staticMode ? 'This page last fetched' : 'Backend last fetched';
-  document.querySelector('#last-fetch').nextElementSibling.textContent =
-    staticMode ? 'this browser\u2019s read of the county API' : 'our successful read of the county site';
   els.countyUpdated.textContent = p.source.countyUpdatedAt
     ? fmtClock(p.source.countyUpdatedAt)
     : p.awaitingResults
@@ -641,7 +641,7 @@ function renderStatus() {
   // Stale / failure indicator: never show old numbers as if they were current.
   const problems = [];
   if (s.stale && s.lastSuccessAt) problems.push(`Data stale — last successful fetch ${fmtAgo(s.lastSuccessAt)}`);
-  if (!s.lastSuccessAt) problems.push('No successful fetch yet');
+  if (!s.lastSuccessAt && !p.awaitingResults) problems.push('Awaiting first successful read');
   if (s.consecutiveFailures > 0) problems.push(`${s.consecutiveFailures} failed fetch${s.consecutiveFailures > 1 ? 'es' : ''} in a row`);
 
   if (problems.length) {
