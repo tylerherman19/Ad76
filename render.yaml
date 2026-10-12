@@ -18,8 +18,6 @@ services:
         value: 8080
       - key: SOURCE_MODE
         value: api
-      - key: ELECTION_ID
-        sync: false          # set this in the Render dashboard once the county posts the primary
       - key: IDLE_INTERVAL_MS
         value: 60000
       - key: ACTIVE_INTERVAL_MS

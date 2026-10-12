@@ -1,4 +1,5 @@
 import config from '../config.js';
+import { resolveElectionId } from '../../shared/countyApi.js';
 import log from '../logger.js';
 import { fetchHtmlResults } from './html.js';
 import { fetchApiResults } from './api.js';
@@ -10,6 +11,8 @@ import { fetchApiResults } from './api.js';
  *   auto -> html first, fall back to api and record that it happened
  */
 export async function fetchResults(params) {
+  params = { ...params, electionId: await resolveElectionId(config.source.apiBaseUrl,
+    { ...config.election, ...params }, { timeoutMs: config.source.requestTimeoutMs }) };
   const mode = config.source.mode;
 
   if (mode === 'html') return fetchHtmlResults(params);

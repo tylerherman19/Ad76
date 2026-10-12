@@ -48,6 +48,17 @@ export async function listElections(baseUrl, opts) {
     .sort((a, b) => String(b.date).localeCompare(String(a.date)));
 }
 
+/** Resolve only the configured election date; never fall back to another election. */
+export async function resolveElectionId(baseUrl, election, opts) {
+  if (election.electionId) return String(election.electionId);
+  const elections = await listElections(baseUrl, opts);
+  const hit = elections.find((e) => e.date === election.electionDate);
+  if (hit) return hit.electionId;
+  const err = new Error(`Dane County has not published results for the ${election.electionDate} election yet.`);
+  err.electionNotFound = true;
+  throw err;
+}
+
 /** Find the race number whose name matches the configured pattern. */
 export async function findRaceNumber(baseUrl, electionId, raceNamePattern, opts) {
   const races = await getJson(`${baseUrl}/races/${encodeURIComponent(electionId)}`, opts);
@@ -107,6 +118,7 @@ export async function fetchCountyResults({ baseUrl, electionId, raceNamePattern,
   }
 
   return {
+    electionId: String(electionId),
     sourceMode: 'api',
     sourceUrls: [url],
     raceName: trim(race.RaceName) || resolvedRace.raceName || null,

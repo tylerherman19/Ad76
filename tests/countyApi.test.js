@@ -1,7 +1,11 @@
+import fs from 'node:fs';
+import config from '../src/config.js';
+import { buildPayload } from '../shared/normalize.js';
+import { buildWardIndex } from '../shared/wardIndex.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { listElections, findRaceNumber, fetchCountyResults } from '../shared/countyApi.js';
+import { listElections, findRaceNumber, fetchCountyResults, resolveElectionId } from '../shared/countyApi.js';
 
 /**
  * SOURCE_MODE=api is the actual election-night default (config/default.json),
@@ -147,4 +151,59 @@ test('fetchCountyResults unions a candidate present in precinct rows but missing
   const result = await fetchCountyResults({ baseUrl: BASE, electionId: '195', raceNumber: '0031' }, {});
   assert.ok(result.candidates.some((c) => c.name === 'write-in:'));
   assert.equal(result.countyUpdatedAt, null);
+});
+
+test('general election discovery waits rather than loading primary results', async (t) => {
+  withFetch(t, [[/\/list$/, [
+    { ElectionId: 194, ElectionName: '2026 Partisan Primary', ElectionDate: '2026-08-11T00:00:00' },
+    { ElectionId: 172, ElectionName: '2024 General Election', ElectionDate: '2024-11-05T00:00:00' },
+  ]]]);
+  await assert.rejects(() => resolveElectionId(BASE, { electionDate: '2026-11-03' }),
+    (err) => err.electionNotFound === true);
+});
+
+test('general election discovery starts using results when the exact date is published', async (t) => {
+  withFetch(t, [[/\/list$/, [
+    { ElectionId: 999, ElectionName: '2027 Spring Election', ElectionDate: '2027-04-06T00:00:00' },
+    { ElectionId: 200, ElectionName: '2026 General Election', ElectionDate: '2026-11-03T00:00:00' },
+    { ElectionId: 194, ElectionName: '2026 Partisan Primary', ElectionDate: '2026-08-11T00:00:00' },
+  ]]]);
+  assert.equal(await resolveElectionId(BASE, { electionDate: '2026-11-03' }), '200');
+});
+
+test('explicit election ID overrides automatic discovery without fetching the list', async () => {
+  assert.equal(await resolveElectionId(BASE, { electionId: '200', electionDate: '2026-11-03' }), '200');
+});
+
+test('configured general race excludes party primaries and neighbouring districts', async (t) => {
+  withFetch(t, [[/\/races\/200$/, [
+    { RaceNumber: '0001', RaceName: 'DEM Representative to the Assembly District 76' },
+    { RaceNumber: '0002', RaceName: 'REP Representative to the Assembly District 76' },
+    { RaceNumber: '0003', RaceName: 'Representative to the Assembly District 760' },
+    { RaceNumber: '0042', RaceName: 'Representative to the Assembly District 76' },
+  ]]]);
+  const hit = await findRaceNumber(BASE, '200', config.election.raceNamePattern);
+  assert.equal(hit.raceNumber, '0042');
+});
+
+test('general election payload keeps discovered ID, both nominees and neutral write-ins', async (t) => {
+  withFetch(t, [[/\/precinctresults\/200\/0042$/, {
+    ElectionRace: { RaceName: 'Representative to the Assembly District 76', Candidates: [
+      { Name: 'Nina Chat', Votes: 10 }, { Name: 'Dina Nina Martinez-Rutherford', Votes: 90 },
+      { Name: 'write-in:', Votes: 1 },
+    ], TotalPrecincts: 28, PrecinctsReported: 1 },
+    PrecinctVotes: [
+      { PrecinctNumber: 1, PrecinctName: 'C Madison Wd 016', CandidateName: 'Nina Chat', Reported: true, TotalVotes: 10 },
+      { PrecinctNumber: 1, PrecinctName: 'C Madison Wd 016', CandidateName: 'Dina Nina Martinez-Rutherford', Reported: true, TotalVotes: 90 },
+      { PrecinctNumber: 1, PrecinctName: 'C Madison Wd 016', CandidateName: 'write-in:', Reported: true, TotalVotes: 1 },
+    ], Election: { LastPublished: '2026-11-03T21:00:00' },
+  }]]);
+  const raw = await fetchCountyResults({ baseUrl: BASE, electionId: '200', raceNumber: '0042' });
+  const payload = buildPayload(raw, buildWardIndex(JSON.parse(fs.readFileSync(new URL('../data/ad76-wards.geojson', import.meta.url)))), config);
+  assert.equal(payload.election.electionId, '200');
+  assert.equal(payload.election.electionDate, '2026-11-03');
+  assert.equal(payload.candidates.find((c) => c.name === 'Nina Chat').color, '#D73027');
+  assert.equal(payload.candidates.find((c) => /Martinez/.test(c.name)).color, '#56B4E9');
+  assert.equal(payload.candidates.find((c) => c.writeIn).color, config.candidates.writeInColor);
+  assert.equal(payload.reporting.wardsReported, 1);
 });

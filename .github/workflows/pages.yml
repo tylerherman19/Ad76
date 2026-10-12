@@ -5,8 +5,7 @@
 # modules itself. See README "Two deployments" for what this can and cannot do
 # compared with running the Node server.
 #
-# To point it at the real primary, set election.electionId in
-# config/default.json (or the ELECTION_ID repo variable) and push.
+# To point it at the general election, the configured election date is discovered automatically when published.
 
 name: Deploy to GitHub Pages
 
@@ -51,7 +50,7 @@ jobs:
         env:
           # Serve from /<repo>/ unless a custom domain puts the site at the root.
           PAGES_BASE_PATH: ${{ github.event.repository.has_custom_domain && '' || format('/{0}', github.event.repository.name) }}
-          ELECTION_ID: ${{ inputs.election_id || vars.ELECTION_ID }}
+          ELECTION_ID: ${{ inputs.election_id }}
         run: npm run build:static
 
       # ONE-TIME MANUAL STEP: Pages must already be enabled with

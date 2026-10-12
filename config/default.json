@@ -1,24 +1,18 @@
 {
   "election": {
-    "//": "Dane County has published the Aug 11 2026 primary as election 194 ('2026 Partisan Primary', ElectionDate 2026-08-11). Verified live against /elections/precinctresults/194/0065: the AD76 DEM race exists with all 6 ballot lines and 28 reporting units covering all 30 AD76 wards. ELECTION_ID still overrides this. null = the backend reports 'election not yet published' instead of guessing.",
-    "electionId": "194",
-    "electionDate": "2026-08-11",
-    "electionLabel": "Democratic Primary — Assembly District 76",
-
-    "//raceMatch": "The race is found by matching this pattern against the county's race list, so the race number does not need to be known in advance. Verified against election 194: the pattern resolves to race 0065, 'DEM Representative to the Assembly District 76' (note the county also lists REP/CON/LIB/GRN AD76 races, which the DEM prefix excludes). Set raceNumber to '0065' only if pattern discovery ever fails.",
-    "raceNamePattern": "DEM\\s+Representative to the Assembly District\\s+76\\b",
+    "//": "November 3, 2026 general election. As of October 12 the county API lists no election on this date. null discovers the election by exact date on every poll; never reuse the August primary ID. ELECTION_ID can explicitly override discovery.",
+    "electionId": null,
+    "electionDate": "2026-11-03",
+    "electionLabel": "General Election — Assembly District 76",
+    "//raceMatch": "General-election race has no party prefix. Anchoring excludes partisan-primary races and District 760. Race number is discovered from the county list.",
+    "raceNamePattern": "^Representative to the Assembly District\\s+76\\b",
     "raceNumber": null,
-
     "//expectedCandidates": "Used ONLY before the county publishes the race, so the legend/table show real names and empty structure instead of blank space. Never used as vote data. Once the scrape succeeds, the county's own candidate list replaces this entirely. Order here sets pre-election palette order only.",
     "expectedCandidates": [
-      "Isaia Ben-Ami",
-      "Juliana Bennett",
-      "Tony Castañeda",
       "Dina Nina Martinez-Rutherford",
-      "Zoe Sullivan"
+      "Nina Chat"
     ]
   },
-
   "source": {
     "//mode": "'api' uses the api.danecounty.gov JSON Election endpoints — the election-night default, because the HTML host refuses datacenter IPs via Cloudflare and the JSON is the same backing data. 'html' scrapes elections.danecounty.gov only. 'auto' tries html first and falls back to api. See README 'Data sources'.",
     "mode": "api",
@@ -29,7 +23,6 @@
     "requestTimeoutMs": 20000,
     "userAgent": "AD76-results-map/1.0 (+ward-level results display; contact: repo owner)"
   },
-
   "polling": {
     "//": "Backend owns the schedule. idleIntervalMs applies while every tracked race shows 0 wards reporting; activeIntervalMs applies as soon as reportingThreshold wards have reported.",
     "idleIntervalMs": 60000,
@@ -43,39 +36,56 @@
       "maxDelayMs": 20000
     }
   },
-
   "geo": {
     "wardsFile": "data/ad76-wards.geojson",
     "assemblyDistrict": "76",
     "arcgisWardLayer": "https://dcimapapps.countyofdane.com/arcgissrv/rest/services/DaneCountyBase/MapServer/18"
   },
-
   "candidates": {
     "//": "Single source of truth for candidate colors, shared by the map, the legend and the table. lockedColors matches on normalized surname/full name; everyone else takes paletteOrder in the order the scrape returns them. Changing the field of candidates is an edit here, nowhere else.",
     "lockedColors": [
-      { "match": "martinez-rutherford", "color": "#56B4E9", "label": "Sky Blue" }
+      {
+        "match": "martinez-rutherford",
+        "color": "#56B4E9",
+        "label": "Sky Blue"
+      },
+      {
+        "match": "nina chat",
+        "color": "#D73027",
+        "label": "Red"
+      }
     ],
     "paletteOrder": [
-      { "color": "#E69F00", "label": "Orange" },
-      { "color": "#009E73", "label": "Bluish Green" },
-      { "color": "#CC79A7", "label": "Reddish Purple" },
-      { "color": "#D55E00", "label": "Vermillion" }
+      {
+        "color": "#E69F00",
+        "label": "Orange"
+      },
+      {
+        "color": "#009E73",
+        "label": "Bluish Green"
+      },
+      {
+        "color": "#CC79A7",
+        "label": "Reddish Purple"
+      },
+      {
+        "color": "#D55E00",
+        "label": "Vermillion"
+      }
     ],
     "noDataColor": "#D6D6D6",
     "//writeIn": "Write-in lines are real results and are counted in totals, but are not given a palette colour or a map hue.",
     "writeInPattern": "^write-?in",
     "writeInColor": "#9A9A9A"
   },
-
   "margin": {
     "//": "Shared saturation scale used for every candidate. A ward won by >= fullStrengthMargin renders at full strength; a ward won by <= lightestMargin renders at the lightest tint. blendTarget is the colour a light margin fades toward — white, to match the light page background.",
     "blendTarget": "#FFFFFF",
-    "lightestMargin": 0.10,
-    "fullStrengthMargin": 0.50,
+    "lightestMargin": 0.1,
+    "fullStrengthMargin": 0.5,
     "minOpacity": 0.18,
     "maxOpacity": 1.0
   },
-
   "server": {
     "port": 8080,
     "host": "0.0.0.0"

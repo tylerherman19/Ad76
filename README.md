@@ -1,7 +1,7 @@
 # AD 76 — Live Ward Results Map
 
 Ward-level choropleth map and results table for the **Wisconsin Assembly District 76
-Democratic primary**, Dane County, **August 11, 2026**.
+general election**, Dane County, **November 3, 2026**.
 
 Results come from the Dane County Clerk's JSON API, each reporting unit is matched to a
 ward boundary from Dane County GIS, and a buildless light-theme frontend (modelled on
@@ -143,7 +143,7 @@ WARN match.no_ward_found {"precinctName":"C Madison Wd 026","reason":"no ward in
 
 ## Two views: ward and alder district
 
-The race is a state assembly primary, but the useful political unit on the night is often
+The race is a state assembly general election, but the useful political unit on the night is often
 the **alder district** — "are we winning District 12". Both levels are first-class:
 
 - **Ward view** (default) — every ward coloured by its own leader; the table lists wards
@@ -154,7 +154,7 @@ the **alder district** — "are we winning District 12". Both levels are first-c
 
 Above the map, an always-visible **scoreboard** shows who leads each alder district, with
 the leader's share and margin, plus a running tally ("Leading in 7 of 8 districts —
-Martinez-Rutherford 3 · Castañeda 1 · …"). Clicking a card selects that district on the
+Martinez-Rutherford 3 · Chat 1"). Clicking a card selects that district on the
 map and in the table.
 
 Wards outside Madison have no alder district, so Town of Blooming Grove and Village of
@@ -266,7 +266,7 @@ in the payload.
 To see it with real results, point it at a past election:
 
 ```bash
-ELECTION_ID=168 SOURCE_MODE=api npm start
+ELECTION_ID=172 SOURCE_MODE=api npm start
 ```
 
 ---
@@ -281,10 +281,11 @@ win over both. Nothing below requires a code change.
 
 | Key | Env | Default | Notes |
 | --- | --- | --- | --- |
-| `election.electionId` | `ELECTION_ID` | `"194"` | Dane County's **2026 Partisan Primary** (ElectionDate 2026-08-11). Verified live: the AD76 DEM race resolves to race `0065`, 28 reporting units covering all 30 AD76 wards. Set to `null` to force the pre-election state. |
-| `election.raceNamePattern` | `RACE_NAME_PATTERN` | `DEM\s+Representative to the Assembly District\s+76\b` | The race is found by matching this against the county's race list, so the race number does not need to be known ahead of time. |
-| `election.raceNumber` | `RACE_NUMBER` | `null` | Optional override if pattern matching fails. For election 194 the value would be `0065`. |
-| `election.expectedCandidates` | — | 5 names | Used **only** before the county publishes the race, so the legend and table show real structure. Replaced entirely by the county's list on the first successful scrape. Never used as vote data. The county spells the third name `Tony Castaneda`, without the tilde. |
+| `election.electionId` | `ELECTION_ID` | `null` | Automatically discovers the election on exactly `2026-11-03` from the county API. Shows the pre-election state until published; never falls back to primary results. An explicit ID overrides discovery. |
+| `election.electionDate` | — | `2026-11-03` | General election date used for discovery. |
+| `election.raceNamePattern` | `RACE_NAME_PATTERN` | `^Representative to the Assembly District\s+76\b` | Matches the general-election race, excluding party-prefixed primary races. |
+| `election.raceNumber` | `RACE_NUMBER` | `null` | Optional override if pattern matching fails. |
+| `election.expectedCandidates` | — | 2 names | Dina Nina Martinez-Rutherford and Nina Chat. Used only before the county publishes the race; the county's candidate list replaces this entirely, including write-ins. Never used as vote data. |
 | `source.countyTimeZone` | `COUNTY_TIME_ZONE` | `America/Chicago` | Zone the county's unmarked "last updated" timestamps are published in. Both source paths convert with this, so the reading does not depend on the server's `TZ`. |
 
 ### Polling and refresh
@@ -306,6 +307,7 @@ One place: `config.candidates` in [`config/default.json`](config/default.json), 
 [`src/colors.js`](src/colors.js). The map fills, the legend, the table header chips and the
 summary bar all read the same assignment.
 
+- **Nina Chat is locked to Red `#D73027`** by name match.
 - **Dina Nina Martinez-Rutherford is locked to Sky Blue `#56B4E9`** by name match, so
   she keeps it regardless of ballot or scrape order, and never consumes a palette slot
   from anyone else.
@@ -449,11 +451,12 @@ Enabling Pages cannot be automated from the workflow — a workflow's default
 `repo` scope. Once the source is set, every push to `main` deploys with no further
 intervention.
 
-To point it at the real primary, either set `election.electionId` in
-`config/default.json` and push, or add an `ELECTION_ID` repository variable
-(**Settings → Secrets and variables → Actions → Variables**) and re-run the workflow —
-no code change needed. The workflow also accepts an election id via
-**Actions → Deploy to GitHub Pages → Run workflow**.
+The general election is discovered automatically by its November 3, 2026 date.
+As of October 12 the county API lists no election on that date, so the site shows
+both nominees with no vote numbers. When published, the next poll discovers the
+ID and the AD76 race. No rebuild is needed. A workflow-dispatch election ID can
+override discovery; the Pages build no longer reads the old `ELECTION_ID` repo
+variable, which could otherwise retain the August primary ID.
 
 Read [Two deployments](#two-deployments) first: the static build cannot do a
 cross-visitor force refresh, and every viewer polls the county directly.
@@ -482,7 +485,7 @@ fly deploy
 Set at minimum:
 
 ```
-ELECTION_ID=<the August 11 2026 primary id>
+# ELECTION_ID is optional; omit it for automatic general-election discovery.
 PORT=8080
 ```
 
@@ -500,12 +503,10 @@ image needs no GIS access at runtime.
 
 Do these **before** election night, not during it:
 
-1. **Find the election id.** Check `https://elections.danecounty.gov/election-dates`
-   for the August 11 2026 primary, or
-   `curl -s https://api.danecounty.gov/api/v1/elections/list | jq 'sort_by(.ElectionDate) | .[-3:]'`.
-   As of this build the newest published election is `190` (April 7 2026); ids advance
-   by roughly 2–5 per election, so expect something in the low 190s. **Do not guess** —
-   the app renders its pre-election state safely until you set a real one.
+1. **Check election discovery.** Inspect `https://api.danecounty.gov/api/v1/elections/list`
+   for November 3, 2026. No ID was published as of October 12. The app waits safely
+   and discovers it on a later poll. Remove old server `ELECTION_ID` / `RACE_NUMBER`
+   overrides if they still target the August primary.
 2. **Run `npm run verify:match -- <electionId>`** once the race is posted, and confirm
    zero unmatched units. This exercises the live API path end to end.
 3. **Confirm the candidate list** matches `config.election.expectedCandidates`, and that

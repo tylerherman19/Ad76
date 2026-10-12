@@ -45,6 +45,9 @@ function loadSnapshot() {
   try {
     if (!fs.existsSync(SNAPSHOT_FILE)) return null;
     const raw = JSON.parse(fs.readFileSync(SNAPSHOT_FILE, 'utf8'));
+    if (raw?.payload?.election?.electionDate !== config.election.electionDate ||
+        raw?.payload?.election?.label !== config.election.electionLabel ||
+        (config.election.electionId && raw?.payload?.election?.electionId !== config.election.electionId)) return null;
     return raw?.payload ? raw : null;
   } catch (err) {
     log.warn('scheduler.snapshot_load_failed', { message: err.message });
@@ -119,15 +122,6 @@ async function attemptFetch(trigger) {
   state.lastFetchAttemptAt = new Date().toISOString();
   state.fetchCount += 1;
 
-  if (!config.election.electionId) {
-    state.payload = buildPlaceholderPayload(
-      'No electionId configured yet. Dane County has not published the August 11 2026 primary; ' +
-        'set ELECTION_ID (or election.electionId in config) once /election-dates lists it.',
-    );
-    log.info('scheduler.awaiting_election_id', { trigger });
-    return true;
-  }
-
   let lastErr = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
@@ -154,6 +148,12 @@ async function attemptFetch(trigger) {
       });
       return true;
     } catch (err) {
+      if (err.electionNotFound || err.raceNotFound) {
+        state.payload = buildPlaceholderPayload(err.message);
+        state.lastError = null;
+        state.consecutiveFailures = 0;
+        return true;
+      }
       lastErr = err;
       const isLast = attempt === maxAttempts;
       log.warn('scrape.attempt_failed', {
