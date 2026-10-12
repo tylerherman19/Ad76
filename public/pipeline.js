@@ -20,6 +20,7 @@
  *   rather than faked.
  */
 
+import { trackDistrictUpdate } from '/shared/districtUpdate.js';
 import { buildWardIndex, wardsToGeoJson } from '/shared/wardIndex.js';
 import { buildPayload, buildPlaceholderPayload } from '/shared/normalize.js';
 import { fetchCountyResults, resolveElectionId } from '/shared/countyApi.js';
@@ -129,7 +130,8 @@ class StaticPipeline {
         },
         { timeoutMs: this.config.source.requestTimeoutMs },
       );
-      const payload = buildPayload(raw, wardIndex, this.config, (e, d) => this.warn(e, d));
+      const payload = trackDistrictUpdate(
+        buildPayload(raw, wardIndex, this.config, (e, d) => this.warn(e, d)), this.lastPayload);
       this.lastSuccessAt = new Date().toISOString();
       this.consecutiveFailures = 0;
       this.lastError = null;

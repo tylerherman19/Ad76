@@ -10,7 +10,69 @@ body::before { content: ""; position: fixed; inset: -20%; z-index: -1; pointer-e
 .stat, .summary__bars > li, .scorecard, .wardrow { transition: transform .2s ease, box-shadow .2s ease, background .2s ease; }
 .stat:hover, .scorecard:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(23,33,43,.09); }
 .statusbar::after { content: ""; position: absolute; left: 0; top: 0; height: 2px; width: 100%; background: linear-gradient(90deg, #4e91bd, #d07b58, #4b9b7a, #4e91bd); background-size: 300% 100%; animation: ui-flow 7s linear infinite; opacity: .8; }
-#last-fetch:not(:empty)::before { content: ""; display: inline-block; width: .48rem; height: .48rem; margin: 0 .4rem .08rem 0; border-radius: 50%; background: #4b9b7a; box-shadow: 0 0 0 4px rgba(75,155,122,.14); }
 @keyframes ui-drift { to { transform: translate3d(2%, -1%, 0) scale(1.04); } }
 @keyframes ui-flow { to { background-position: 300% 0; } }
 @media (prefers-reduced-motion: reduce) { body::before, .statusbar::after { animation: none; } *, *::before, *::after { transition-duration: .01ms !important; } }
+
+/* Mobile election-night overview: totals first, two independent update clocks,
+   then direct access to map, district and ward detail. */
+.mobile-nav { display: none; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+section[id] { scroll-margin-top: 4rem; }
+@media (max-width: 600px) {
+  body { display: flex; flex-direction: column; background: #fff; }
+  body::before, .statusbar::after { display: none; }
+  .masthead { order: 0; padding: 1rem 0 .75rem; border-bottom-width: 2px; }
+  .masthead__title { font-size: 1.9rem; }
+  .masthead__title-sub { font-size: 1rem; margin-top: .25rem; }
+  .masthead__note { font-size: .8125rem; margin-top: .5rem; }
+  .eyebrow { font-size: .625rem; letter-spacing: .025em; }
+  .summary { order: 1; padding: .9rem 0; }
+  .summary__inner, .mapwrap, .tablewrap, .scoreboard__grid {
+    border: 0; border-radius: 0; box-shadow: none; backdrop-filter: none; background: #fff;
+  }
+  .summary__inner { padding: 0 var(--gutter); }
+  .summary__lead { margin-top: .5rem; }
+  .summary__bars { margin-top: .65rem; gap: .65rem; }
+  .sumrow { grid-template-columns: minmax(0, 1fr) auto; gap: .3rem .5rem; }
+  .sumrow__name { white-space: normal; overflow: visible; font-size: .875rem; }
+  .sumrow__track { height: .5rem; }
+  .statusbar { order: 2; border-top: 1px solid var(--rule); }
+  .statusbar__inner { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: .85rem 1rem; padding-block: .85rem; }
+  .stat--reporting { min-width: 0; }
+  .stat__label { font-family: var(--sans); font-size: .75rem; letter-spacing: 0; text-transform: none; color: var(--ink-mid); }
+  .stat__value { font-size: 1.125rem; }
+  .stat__value--sm { font-size: .875rem; }
+  .stat__sub { font-size: .6875rem; color: var(--ink-mid); }
+  .stat:hover { transform: none; box-shadow: none; }
+  .statusbar__actions { grid-column: 1 / -1; width: auto; display: flex; flex-wrap: wrap; gap: .5rem; }
+  .statusbar__actions .badge { flex-basis: 100%; max-width: none; }
+  .sound-toggle, .refresh-btn { min-height: 44px; flex: 1; justify-content: center; align-items: center; padding: .45rem .5rem; }
+  .refresh-btn__hint { display: none; }
+  .mobile-nav { order: 3; display: flex; position: sticky; top: 0; z-index: 500; background: #fff; border-block: 1px solid var(--rule); padding-inline: var(--gutter); }
+  .mobile-nav a { flex: 1; min-height: 44px; display: flex; align-items: center; justify-content: center; color: var(--ink); font-size: .875rem; font-weight: 600; text-decoration: none; }
+  .mobile-nav a:active { background: var(--bg-alt); }
+  .mapsection { order: 4; padding-top: 1rem; }
+  .mapsection__head { flex-wrap: wrap; gap: .65rem; }
+  .mapsection__hint { flex-basis: 100%; }
+  .viewtoggle { width: 100%; display: flex; }
+  .viewtoggle__btn { flex: 1; min-height: 44px; font-size: .6875rem; }
+  #map { height: 340px; min-height: 0; }
+  .mapdetail { max-height: none; }
+  .legend__candidates { flex-wrap: wrap; gap: .6rem 1rem; }
+  .scoreboard { order: 5; padding-block: 1rem; }
+  .scoreboard__head { display: block; }
+  .scoreboard__note { margin-top: .4rem; }
+  .scoreboard__grid { grid-template-columns: repeat(2,minmax(0,1fr)); padding: 0; }
+  .scorecard { min-width: 0; }
+  .tablesection { order: 6; }
+  .group__toggle, .cardrow__head, .linkbtn { min-height: 44px; }
+  .group__kind { display: block; margin-left: 0; }
+  .cardrow__item { grid-template-columns: auto minmax(0,1fr) auto; }
+  .footer { order: 7; padding-bottom: calc(1.5rem + env(safe-area-inset-bottom)); }
+  .footer__meta { overflow-wrap: anywhere; }
+}
+@media (max-width: 600px) {
+  .sumrow__name span:last-child { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+  .sumrow__num { font-size: .75rem; }
+}

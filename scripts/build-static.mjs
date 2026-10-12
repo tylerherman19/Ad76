@@ -87,7 +87,7 @@ if (BASE) {
     const p = path.join(DIST, file);
     let s = fs.readFileSync(p, 'utf8');
     s = s
-      .replace(/(["'(])\/(vendor|shared|data|styles\.css|app\.js|pipeline\.js|runtime-config\.json)/g, `$1${BASE}/$2`)
+      .replace(/(["'(])\/(vendor|shared|data|styles\.css|threeui-enhancements\.css|favicon\.svg|app\.js|pipeline\.js|runtime-config\.json)/g, `$1${BASE}/$2`)
       .replace(/fetch\(['"]\/runtime-config\.json['"]/g, `fetch('${BASE}/runtime-config.json'`);
     fs.writeFileSync(p, s);
   }
