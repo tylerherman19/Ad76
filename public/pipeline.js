@@ -22,7 +22,7 @@
 
 import { buildWardIndex, wardsToGeoJson } from '/shared/wardIndex.js';
 import { buildPayload, buildPlaceholderPayload } from '/shared/normalize.js';
-import { fetchCountyResults } from '/shared/countyApi.js';
+import { fetchCountyResults, resolveElectionId } from '/shared/countyApi.js';
 import { staticScheduleInfo, phaseFor, intervalFor } from '/shared/schedule.js';
 import { trendPointFrom, pushTrendPoint, MAX_TREND_POINTS } from '/shared/trend.js';
 
@@ -114,26 +114,15 @@ class StaticPipeline {
 
   async results() {
     const wardIndex = await this.loadWards();
-    const { electionId, raceNamePattern, raceNumber } = this.config.election;
-
-    // No election id yet: render real structure, no numbers. Same placeholder
-    // builder the backend uses.
-    if (!electionId) {
-      const payload = buildPlaceholderPayload(
-        wardIndex,
-        this.config,
-        'No electionId configured yet. Dane County has not published the August 11 2026 primary. ' +
-          'Set election.electionId in config/default.json and redeploy once it is listed.',
-      );
-      this.lastPayload = payload;
-      return { ...payload, schedule: this.buildSchedule(payload), display: this.display(), trend: this.history };
-    }
+    const { raceNamePattern, raceNumber } = this.config.election;
 
     try {
+      const resolvedElectionId = await resolveElectionId(this.config.source.apiBaseUrl,
+        this.config.election, { timeoutMs: this.config.source.requestTimeoutMs });
       const raw = await fetchCountyResults(
         {
           baseUrl: this.config.source.apiBaseUrl,
-          electionId,
+          electionId: resolvedElectionId,
           raceNamePattern,
           raceNumber,
           countyTimeZone: this.config.source.countyTimeZone,
@@ -148,22 +137,20 @@ class StaticPipeline {
       this.history = pushTrendPoint(this.history, trendPointFrom(payload, Date.now()), MAX_TREND_POINTS);
       return { ...payload, schedule: this.buildSchedule(payload), display: this.display(), trend: this.history };
     } catch (err) {
+      // Awaiting publication is expected, not a failed read of results.
+      if (err.raceNotFound || err.electionNotFound) {
+        const payload = buildPlaceholderPayload(wardIndex, this.config, err.message);
+        this.consecutiveFailures = 0;
+        this.lastError = null;
+        this.lastFailureAt = null;
+        this.lastPayload = payload;
+        return { ...payload, schedule: this.buildSchedule(payload), display: this.display(), trend: this.history };
+      }
+
       this.lastFailureAt = new Date().toISOString();
       this.consecutiveFailures += 1;
       this.lastError = { message: err.message, status: err.status ?? null };
       this.warn('fetch.failed', this.lastError);
-
-      // The race not existing yet is an expected state before the county posts
-      // it, not an error condition — show structure, say why.
-      if (err.raceNotFound) {
-        const payload = buildPlaceholderPayload(
-          wardIndex,
-          this.config,
-          `Election ${electionId} exists, but the AD76 race has not been posted yet.`,
-        );
-        this.lastPayload = payload;
-        return { ...payload, schedule: this.buildSchedule(payload), display: this.display(), trend: this.history };
-      }
 
       // Keep the last good payload on screen; the stale badge covers the gap.
       if (this.lastPayload) {

@@ -337,7 +337,7 @@ function renderDetail() {
   if (!unit) {
     els.mapDetail.innerHTML = `<p class="mapdetail__empty">${
       isTouch ? 'Tap' : 'Select'
-    } a ward to see its five-candidate breakdown.</p>`;
+    } a ward to see its candidate breakdown.</p>`;
     return;
   }
 
@@ -390,7 +390,7 @@ function renderGroupDetail() {
   if (!group) {
     els.mapDetail.innerHTML = `<p class="mapdetail__empty">${
       isTouch ? 'Tap' : 'Select'
-    } an alder district to see its combined five-candidate totals.</p>`;
+    } an alder district to see its combined candidate totals.</p>`;
     return;
   }
 

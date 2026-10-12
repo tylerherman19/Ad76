@@ -225,7 +225,7 @@ export function buildPayload(raw, wardIndex, config, warn = () => {}) {
 
   return {
     election: {
-      electionId: config.election.electionId ?? null,
+      electionId: raw.electionId ?? config.election.electionId ?? null,
       electionDate: config.election.electionDate,
       label: config.election.electionLabel,
       raceName: raw.raceName ?? null,

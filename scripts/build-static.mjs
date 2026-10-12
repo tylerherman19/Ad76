@@ -108,7 +108,7 @@ const size = (d) =>
 
 console.log(`Built dist/ (${(size(DIST) / 1024 / 1024).toFixed(2)} MB)`);
 console.log(`  base path:  ${BASE || '(site root)'}`);
-console.log(`  electionId: ${config.election.electionId ?? '(not set — renders pre-election state)'}`);
+console.log(`  electionId: ${config.election.electionId ?? '(automatic discovery by election date)'}`);
 console.log(`  county API: ${config.source.apiBaseUrl}`);
 console.log('\nNOTE: static hosting has no shared server state. The countdown stays in sync');
 console.log('across visitors via absolute UTC boundaries, but force refresh affects only the');
